@@ -1,0 +1,58 @@
+# Specific energy consumption assumptions migrated verbatim from encryption.ipynb.
+# The notebook did not cite their sources. Review and override them for published work.
+transport_sec_mj_per_service_km:
+  Air|Electricity: 2.5
+  Air|Gas: 2.4
+  Air|Hydrogen: 2.2
+  Air|Liquids|Biomass: 2.0
+  Air|Liquids|Fossil: 2.0
+  International Shipping|Electricity: 0.5
+  International Shipping|Gas: 0.3
+  International Shipping|Hydrogen: 0.4
+  International Shipping|Liquids|Biomass: 0.2
+  International Shipping|Liquids|Fossil: 0.2
+  National Shipping|Electricity: 0.5
+  National Shipping|Gas: 0.4
+  National Shipping|Hydrogen: 0.6
+  National Shipping|Liquids|Biomass: 0.3
+  National Shipping|Liquids|Fossil: 0.3
+  Train|Electricity: 0.3
+  Train|Gas: 0.6
+  Train|Hydrogen: 0.5
+  Train|Liquids|Biomass: 0.5
+  Train|Liquids|Fossil: 0.5
+  Bus|Electricity: 0.6
+  Bus|Gases: 0.9
+  Bus|Hydrogen: 1.0
+  Bus|Liquids|Biomass: 0.8
+  Bus|Liquids|Fossil: 0.8
+  Domestic Aviation|Electricity: 1.5
+  Domestic Aviation|Gases: 1.3
+  Domestic Aviation|Hydrogen: 1.2
+  Domestic Aviation|Liquids|Biomass: 1.0
+  Domestic Aviation|Liquids|Fossil: 1.0
+  International Aviation|Electricity: 1.4
+  International Aviation|Gases: 1.3
+  International Aviation|Hydrogen: 1.1
+  International Aviation|Liquids|Biomass: 0.9
+  International Aviation|Liquids|Fossil: 0.9
+  Light Duty Vehicle|Electricity: 0.4
+  Light Duty Vehicle|Gases: 0.5
+  Light Duty Vehicle|Hydrogen: 0.6
+  Light Duty Vehicle|Liquids|Biomass: 0.6
+  Light Duty Vehicle|Liquids|Fossil: 0.6
+  Rail (high speed)|Electricity: 0.2
+  Rail (high speed)|Gases: 0.6
+  Rail (high speed)|Hydrogen: 0.5
+  Rail (high speed)|Liquids|Biomass: 0.4
+  Rail (high speed)|Liquids|Fossil: 0.4
+  Rail (low speed)|Electricity: 0.3
+  Rail (low speed)|Gases: 0.6
+  Rail (low speed)|Hydrogen: 0.5
+  Rail (low speed)|Liquids|Biomass: 0.4
+  Rail (low speed)|Liquids|Fossil: 0.4
+
+# IMAGE does not report BEV-truck SEC. Supply these values in an override file
+# or with the CLI options --medium-bev-sec and --heavy-bev-sec.
+bev_truck_sec_mj_per_tkm: {}
+negative_residual_tolerance_ej: 1.0e-7
