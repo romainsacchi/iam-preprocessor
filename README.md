@@ -53,11 +53,26 @@ iam-preprocessor image image-inputs --output-dir processed/image \
 
 Run `iam-preprocessor COMMAND --help` for all options available to a workflow.
 
-### IMAGE transport assumptions
+## Model-specific transformations
 
-IMAGE reports aggregate truck electricity rather than separate battery-electric
-truck service. Deriving the explicit medium- and heavy-truck BEV variables
-therefore requires reviewed specific energy consumption (SEC) assumptions in
+### IMAGE
+
+The IMAGE workflow:
+
+- converts final-energy rows from PJ/yr to EJ/yr when needed and rejects
+  unsupported transport-energy units;
+- derives passenger and freight energy-service variables from final energy using
+  the configured specific energy consumption (SEC), with outputs expressed in
+  billion pkm/yr or billion tkm/yr; and
+- derives explicit battery-electric medium- and heavy-truck final energy and
+  service variables from the residual between total truck electricity and
+  reconstructed plug-in-hybrid electricity use.
+
+World BEV truck values are calculated as the sum of the derived regional values
+because IMAGE does not provide the World-level plug-in-hybrid efficiency rows
+needed for a direct calculation.
+
+The BEV derivation requires reviewed medium- and heavy-truck SEC assumptions in
 MJ/tkm:
 
 ```yaml
@@ -71,7 +86,27 @@ recommended scientific assumptions. Values can instead be passed with
 `--medium-bev-sec` and `--heavy-bev-sec`. Use `--skip-bev` to disable the BEV
 derivation or `--strict` to reject material negative residuals.
 
-### Variable filtering
+### MESSAGE
+
+The MESSAGE workflow normalizes the region dimension by removing the `R12_`
+prefix from region labels and dropping `GLB` aggregate rows. Other columns and
+regional values remain unchanged before the shared variable filter is applied.
+
+### REMIND
+
+The REMIND workflow:
+
+- removes `EU27` rows;
+- also removes the overlapping `EUR` and `NEU` aggregates when processing an
+  input whose filename contains `EU21`; and
+- derives a cement CCS share from reported carbon capture and process emissions,
+  then splits cement production and final-energy use between the original
+  non-CCS rows and new `w CCS` rows.
+
+Zero capture-plus-emissions denominators produce a zero CCS share. Rates outside
+the interval from zero to one are clipped and recorded as validation warnings.
+
+## Variable filtering
 
 Model workflows filter their results by default. A scenario table can also be
 filtered independently:
