@@ -132,7 +132,7 @@ def encrypt_command(
     key_file: Path | None = typer.Option(None, "--key-file", exists=True, readable=True),
     overwrite: bool = typer.Option(False, "--overwrite"),
 ) -> None:
-    """Encrypt a file with IAM_PREPROCESSOR_KEY or a protected key file."""
+    """Encrypt a file using a key file, environment, or local .env file."""
 
     typer.echo(str(encrypt_file(source, destination, key_file=key_file, overwrite=overwrite)))
 
@@ -144,7 +144,7 @@ def decrypt_command(
     key_file: Path | None = typer.Option(None, "--key-file", exists=True, readable=True),
     overwrite: bool = typer.Option(False, "--overwrite"),
 ) -> None:
-    """Decrypt a file with IAM_PREPROCESSOR_KEY or a protected key file."""
+    """Decrypt a file using a key file, environment, or local .env file."""
 
     typer.echo(str(decrypt_file(source, destination, key_file=key_file, overwrite=overwrite)))
 

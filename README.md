@@ -1,38 +1,64 @@
 # iam-preprocessor
 
-`iam-preprocessor` turns the mixed preprocessing cells from the former
-`encryption.ipynb` notebook into tested, reusable model workflows. It prepares
-IMAGE, MESSAGE, and REMIND scenario tables for `premise`, filters variables, and
-optionally encrypts the resulting CSV files without storing secrets.
+`iam-preprocessor` is a Python library and command-line application that turns
+integrated assessment model (IAM) scenario exports into files ready to be
+consumed by [`premise`](https://github.com/polca/premise).
 
-The repository deliberately contains no IAM scenario files, generated outputs,
-or encryption keys.
+It provides reproducible model-specific transformations, selects the variables
+used by `premise`, writes consistently formatted scenario files, and can encrypt
+the results with the standard Premise key.
 
-## Install for development
+## Supported workflows
+
+| IAM | Processing |
+| --- | --- |
+| IMAGE | Derives transport energy-service variables, including explicit battery-electric medium- and heavy-truck variables when SEC assumptions are supplied. |
+| MESSAGE | Normalizes region labels and removes the unsupported global aggregate. |
+| REMIND | Splits cement production and energy use into CCS and non-CCS variables and removes legacy aggregate regions. |
+| Any supported table | Filters variables using the `premise` variable-prefix allowlist. |
+
+Inputs can be CSV or Excel files. Each model workflow writes a semicolon-delimited
+CSV and a JSON processing report containing source and output hashes, row counts,
+effective non-secret assumptions, and validation warnings. Existing outputs are
+protected unless `--overwrite` is supplied.
+
+## Installation
+
+Python 3.10 or newer is required.
 
 ```console
 python -m venv .venv
 source .venv/bin/activate
+python -m pip install -e .
+```
+
+Install the development dependencies when running tests or building the API
+documentation:
+
+```console
 python -m pip install -e ".[dev]"
 ```
 
-## Prepare IMAGE files
+## Command-line usage
 
-IMAGE reports total medium- and heavy-truck electricity, but not explicit BEV
-transport service. The application subtracts electricity reconstructed from the
-reported plug-in-hybrid activity, then converts the remaining BEV electricity to
-transport service using explicit assumptions supplied at runtime.
+Process one file, several files, or every supported file directly inside an
+input directory:
 
 ```console
-iam-preprocessor image /path/to/image-inputs \
-  --output-dir /path/to/processed \
-  --medium-bev-sec 1.0 \
-  --heavy-bev-sec 0.5
+iam-preprocessor message message-inputs --output-dir processed/message
+iam-preprocessor remind remind-inputs --output-dir processed/remind
+iam-preprocessor image image-inputs --output-dir processed/image \
+  --sec-config assumptions.yaml
 ```
 
-SEC values are in MJ/tkm; the example numbers above are placeholders, not
-recommended scientific assumptions. Put reviewed values in an override file for
-reproducible work:
+Run `iam-preprocessor COMMAND --help` for all options available to a workflow.
+
+### IMAGE transport assumptions
+
+IMAGE reports aggregate truck electricity rather than separate battery-electric
+truck service. Deriving the explicit medium- and heavy-truck BEV variables
+therefore requires reviewed specific energy consumption (SEC) assumptions in
+MJ/tkm:
 
 ```yaml
 bev_truck_sec_mj_per_tkm:
@@ -40,73 +66,91 @@ bev_truck_sec_mj_per_tkm:
   Heavy Truck: 0.5
 ```
 
+The numbers above only illustrate the configuration format; they are not
+recommended scientific assumptions. Values can instead be passed with
+`--medium-bev-sec` and `--heavy-bev-sec`. Use `--skip-bev` to disable the BEV
+derivation or `--strict` to reject material negative residuals.
+
+### Variable filtering
+
+Model workflows filter their results by default. A scenario table can also be
+filtered independently:
+
 ```console
-iam-preprocessor image /path/to/image-inputs \
-  --output-dir /path/to/processed \
-  --sec-config assumptions.yaml
-```
-
-Use `--strict` to fail rather than clip material negative BEV residuals, or
-`--skip-bev` when only the legacy carrier-service transformation is wanted.
-
-## Other workflows
-
-```console
-iam-preprocessor message message.csv --output-dir processed
-iam-preprocessor remind remind.csv --output-dir processed
 iam-preprocessor filter scenario.csv --output-dir processed
 ```
 
-Every model workflow writes semicolon-delimited CSV plus a JSON run report with
-hashes, effective non-secret assumptions, and validation warnings. Existing files
-are protected unless `--overwrite` is explicitly supplied.
+Pass `--no-filter` to a model workflow when the complete transformed table is
+needed.
 
 ## Encryption
 
-Supply Fernet keys through `IAM_PREPROCESSOR_KEY` or a protected key file. Raw
-keys are not accepted as command-line values and are never added to reports.
+The application loads `PREMISE_KEY` from the process environment or from the
+nearest `.env` file in the current directory or its parents. Create a local file
+from the tracked template and restrict it to the current user:
 
 ```console
-export IAM_PREPROCESSOR_KEY="$(< /secure/path/iam.key)"
+cp .env.example .env
+chmod 600 .env
+```
+
+```dotenv
+PREMISE_KEY=your-fernet-key
+```
+
+The `.env` file is ignored by Git. An existing `PREMISE_KEY` or the compatible
+`IAM_PREPROCESSOR_KEY` environment variable takes precedence over `.env`. A
+protected `--key-file` takes precedence over all environment sources.
+
+Encrypt or decrypt individual files with:
+
+```console
 iam-preprocessor encrypt processed.csv encrypted.csv
 iam-preprocessor decrypt encrypted.csv recovered.csv
 ```
 
-Model workflows can also write an encrypted copy:
+Model workflows can create encrypted copies directly:
 
 ```console
-iam-preprocessor image /path/to/image-inputs \
+iam-preprocessor message message-inputs \
   --output-dir processed \
-  --encrypt-to encrypted \
-  --key-file /secure/path/iam.key \
-  --sec-config assumptions.yaml
+  --encrypt-to encrypted
 ```
+
+Keys are never accepted as command-line values, written to processing reports,
+or included in tracked files.
 
 ## Python API
 
-```python
-from iam_preprocessor import load_sec_config, prepare_image
+The same workflows are available as Python functions:
 
-config = load_sec_config("assumptions.yaml")
-reports = prepare_image(
-    ["/path/to/IMAGE.xlsx"],
+```python
+from iam_preprocessor import prepare_message
+
+reports = prepare_message(
+    ["/path/to/MESSAGE.csv"],
     "/path/to/processed",
-    config,
 )
+
+for report in reports:
+    print(report.output_path, report.output_rows)
 ```
 
-Build the complete API documentation with:
+The public API also provides `prepare_image`, `prepare_remind`,
+`filter_variables`, `encrypt_file`, `decrypt_file`, and the transport derivation
+functions. Build the complete API reference with:
 
 ```console
 sphinx-build -W -b html docs docs/_build/html
 ```
 
-## Development checks
+## Development
 
 ```console
 ruff check src tests
 ruff format --check src tests
 pytest
+sphinx-build -W -b html docs docs/_build/html
 ```
 
-Licensed under the BSD 3-Clause License.
+The project is licensed under the BSD 3-Clause License.

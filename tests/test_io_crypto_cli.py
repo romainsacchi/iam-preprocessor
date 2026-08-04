@@ -13,6 +13,7 @@ from iam_preprocessor.image import prepare_image
 
 def test_crypto_roundtrip_uses_runtime_environment(tmp_path, monkeypatch):
     key = Fernet.generate_key().decode("ascii")
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("IAM_PREPROCESSOR_KEY", key)
     source = tmp_path / "plain.txt"
     encrypted = tmp_path / "encrypted.bin"
@@ -20,6 +21,24 @@ def test_crypto_roundtrip_uses_runtime_environment(tmp_path, monkeypatch):
     source.write_text("scenario data", encoding="utf-8")
     encrypt_file(source, encrypted)
     decrypt_file(encrypted, recovered)
+    assert recovered.read_text(encoding="utf-8") == "scenario data"
+    assert key not in encrypted.read_bytes().decode("latin-1")
+
+
+def test_crypto_roundtrip_loads_premise_key_from_dotenv(tmp_path, monkeypatch):
+    key = Fernet.generate_key().decode("ascii")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PREMISE_KEY", raising=False)
+    monkeypatch.delenv("IAM_PREPROCESSOR_KEY", raising=False)
+    (tmp_path / ".env").write_text(f"PREMISE_KEY={key}\n", encoding="utf-8")
+    source = tmp_path / "plain.txt"
+    encrypted = tmp_path / "encrypted.bin"
+    recovered = tmp_path / "recovered.txt"
+    source.write_text("scenario data", encoding="utf-8")
+
+    encrypt_file(source, encrypted)
+    decrypt_file(encrypted, recovered)
+
     assert recovered.read_text(encoding="utf-8") == "scenario data"
     assert key not in encrypted.read_bytes().decode("latin-1")
 

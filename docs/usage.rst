@@ -37,4 +37,8 @@ Filtering and cryptography
    iam-preprocessor encrypt SOURCE DESTINATION [--key-file KEY]
    iam-preprocessor decrypt SOURCE DESTINATION [--key-file KEY]
 
+Without ``--key-file``, these commands load ``PREMISE_KEY`` from the process
+environment or the nearest ``.env`` file. ``IAM_PREPROCESSOR_KEY`` remains
+supported for compatibility.
+
 All writes protect existing files unless ``--overwrite`` is present.

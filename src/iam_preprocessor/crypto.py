@@ -8,10 +8,33 @@ import warnings
 from pathlib import Path
 
 from cryptography.fernet import Fernet
+from dotenv import find_dotenv, load_dotenv
 
 from .exceptions import ConfigurationError, IamPreprocessorError
 
-KEY_ENVIRONMENT_VARIABLE = "IAM_PREPROCESSOR_KEY"
+KEY_ENVIRONMENT_VARIABLES = ("PREMISE_KEY", "IAM_PREPROCESSOR_KEY")
+
+
+def _key_from_environment() -> str | None:
+    """Return a key from the process environment or the nearest ``.env`` file.
+
+    Values already present in the process environment take precedence. Dotenv
+    discovery starts in the current working directory and walks up through its
+    parents; loaded values never overwrite existing environment variables.
+    """
+
+    value = next(
+        (os.environ.get(name) for name in KEY_ENVIRONMENT_VARIABLES if os.environ.get(name)), None
+    )
+    if value:
+        return value
+
+    dotenv_path = find_dotenv(usecwd=True)
+    if dotenv_path:
+        load_dotenv(dotenv_path=dotenv_path, override=False)
+    return next(
+        (os.environ.get(name) for name in KEY_ENVIRONMENT_VARIABLES if os.environ.get(name)), None
+    )
 
 
 def load_fernet_key(key_file: str | Path | None = None) -> bytes:
@@ -34,10 +57,11 @@ def load_fernet_key(key_file: str | Path | None = None) -> bytes:
         except OSError as exc:
             raise ConfigurationError(f"Could not read Fernet key file {path}: {exc}") from exc
     else:
-        value = os.environ.get(KEY_ENVIRONMENT_VARIABLE)
+        value = _key_from_environment()
         if not value:
             raise ConfigurationError(
-                f"Set {KEY_ENVIRONMENT_VARIABLE} or provide --key-file for encryption."
+                "Set PREMISE_KEY (optionally in .env), set IAM_PREPROCESSOR_KEY, "
+                "or provide --key-file for encryption."
             )
         key = value.encode("ascii").strip()
     try:
