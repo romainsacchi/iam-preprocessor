@@ -24,7 +24,14 @@ MESSAGE and REMIND
    iam-preprocessor message INPUT... --output-dir OUTPUT
    iam-preprocessor remind INPUT... --output-dir OUTPUT
 
-MESSAGE processing strips ``R12_`` from region labels and removes ``GLB``.
+MESSAGE processing derives mutually exclusive finished NG-DRI, NG-DRI+CCS,
+and H-DRI steel routes from reported sponge-iron activity and aggregate DRI/EAF
+steel output. It also removes exact duplicate rows, strips ``R12_`` from region
+labels, and removes ``GLB``. The DRI split uses each scenario-year World
+finished-steel-to-sponge-iron conversion factor and validates regional closure.
+The NG-DRI residual is the existing non-H2/non-CCS inventory proxy and includes
+MESSAGE's coal-without-CCS remainder because premise has no separate coal-DRI
+inventory category.
 REMIND processing removes legacy aggregate regions and splits cement production
 and energy into CCS and non-CCS portions.
 

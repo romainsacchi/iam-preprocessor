@@ -13,7 +13,7 @@ the results with the standard Premise key.
 | IAM | Processing |
 | --- | --- |
 | IMAGE | Derives transport energy-service variables, including explicit battery-electric medium- and heavy-truck variables when SEC assumptions are supplied. |
-| MESSAGE | Normalizes region labels and removes the unsupported global aggregate. |
+| MESSAGE | Splits aggregate DRI/EAF steel into mutually exclusive NG-DRI, NG-DRI+CCS, and H-DRI routes, normalizes region labels, and removes the unsupported global aggregate. |
 | REMIND | Splits cement production and energy use into CCS and non-CCS variables and removes legacy aggregate regions. |
 | Any supported table | Filters variables using the `premise` variable-prefix allowlist. |
 
@@ -89,8 +89,31 @@ derivation or `--strict` to reject material negative residuals.
 ### MESSAGE
 
 The MESSAGE workflow normalizes the region dimension by removing the `R12_`
-prefix from region labels and dropping `GLB` aggregate rows. Other columns and
-regional values remain unchanged before the shared variable filter is applied.
+prefix from region labels and dropping `GLB` aggregate rows. Exact duplicate
+source rows are removed before validation.
+
+MESSAGE reports reduction-route activity as sponge iron but only reports
+finished primary DRI/EAF steel as an aggregate. The workflow derives three
+mutually exclusive finished-steel variables:
+
+- `Production|Industry|Iron and Steel|NG-DRI/EAF`;
+- `Production|Industry|Iron and Steel|NG-DRI/EAF + CCS`; and
+- `Production|Industry|Iron and Steel|H-DRI/EAF`.
+
+For each scenario and year, the reported World finished DRI/EAF steel-to-total
+sponge-iron conversion factor is applied to regional hydrogen and gas-with-CCS
+sponge iron. The remaining non-H2/non-CCS output uses premise's existing
+NG-DRI inventory proxy. This residual includes MESSAGE's coal-without-CCS
+sponge-iron remainder because premise has no separate coal-DRI inventory
+category. This construction preserves the original aggregate DRI/EAF output in
+every region and year and preserves World versus regional totals. When no
+explicit World row is available, regional sums determine the conversion
+factor. Missing inputs skip the derivation with a report warning; inconsistent
+units, negative residuals, or non-closing results fail validation.
+
+The workflow does not invent route-specific energy-use series. MESSAGE's
+reported DRI/EAF energy use remains aggregate and should not be assigned to one
+of the derived routes as if it were route-specific.
 
 ### REMIND
 

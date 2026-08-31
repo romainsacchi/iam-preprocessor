@@ -74,8 +74,13 @@ def validate_frame(data: pd.DataFrame) -> None:
         raise DataValidationError(f"Duplicate IAM rows for {keys}: {sample}")
 
 
-def read_frame(path: str | Path) -> pd.DataFrame:
-    """Read an IAM Excel or comma/semicolon-delimited CSV file."""
+def read_frame(path: str | Path, *, drop_exact_duplicates: bool = False) -> pd.DataFrame:
+    """Read an IAM Excel or comma/semicolon-delimited CSV file.
+
+    ``drop_exact_duplicates`` is reserved for source exports known to repeat
+    byte-equivalent IAM rows. Conflicting rows with the same IAM identity are
+    still rejected by :func:`validate_frame`.
+    """
 
     source = Path(path)
     suffix = source.suffix.lower()
@@ -89,7 +94,13 @@ def read_frame(path: str | Path) -> pd.DataFrame:
     else:
         raise IamPreprocessorError(f"Unsupported input format: {source}")
     frame = normalize_columns(frame)
+    duplicate_rows_removed = 0
+    if drop_exact_duplicates:
+        duplicate_rows_removed = int(frame.duplicated(keep="first").sum())
+        if duplicate_rows_removed:
+            frame = frame.drop_duplicates(keep="first").reset_index(drop=True)
     validate_frame(frame)
+    frame.attrs["exact_duplicate_rows_removed"] = duplicate_rows_removed
     return frame
 
 
