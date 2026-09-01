@@ -16,13 +16,14 @@ reject material negative BEV residuals, and ``--skip-bev`` to disable that
 derivation explicitly. Directory processing excludes names containing
 ``_filtered`` or ``_allocated`` to prevent accidental reprocessing.
 
-MESSAGE and REMIND
-------------------
+MESSAGE, REMIND, and TIAM-UCL
+-----------------------------
 
 .. code-block:: console
 
    iam-preprocessor message INPUT... --output-dir OUTPUT
    iam-preprocessor remind INPUT... --output-dir OUTPUT
+   iam-preprocessor tiam-ucl INPUT... --output-dir OUTPUT
 
 MESSAGE processing derives mutually exclusive finished NG-DRI, NG-DRI+CCS,
 and H-DRI steel routes from reported sponge-iron activity and aggregate DRI/EAF
@@ -34,6 +35,13 @@ MESSAGE's coal-without-CCS remainder because premise has no separate coal-DRI
 inventory category.
 REMIND processing removes legacy aggregate regions and splits cement production
 and energy into CCS and non-CCS portions.
+
+TIAM-UCL processing derives H-DRI hydrogen final energy from reported finished
+H-DRI/EAF steel production. Its default 66.52317888 kg H2/t-steel intensity is
+aligned with the premise H2-DRI/EAF inventory and can be overridden with
+``--h-dri-hydrogen-kg-per-tonne-steel``. Reports identify the result as a
+derived proxy, record the full conversion basis, and document preserved
+non-unique transport-efficiency identities in the source export.
 
 Filtering and cryptography
 --------------------------

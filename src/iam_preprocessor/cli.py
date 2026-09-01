@@ -14,6 +14,10 @@ from .image import prepare_image
 from .io import discover_inputs, read_frame, write_csv_atomic
 from .message import prepare_message
 from .remind import prepare_remind
+from .tiam_ucl import (
+    TIAM_DEFAULT_H_DRI_HYDROGEN_KG_PER_TONNE_STEEL,
+    prepare_tiam_ucl,
+)
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -103,6 +107,36 @@ def remind_command(
         prepare_remind(
             inputs,
             output_dir,
+            filter_output=not no_filter,
+            encrypt_to=encrypt_to,
+            key_file=key_file,
+            overwrite=overwrite,
+        )
+    )
+
+
+@app.command("tiam-ucl")
+def tiam_ucl_command(
+    inputs: list[Path] = typer.Argument(..., exists=True, readable=True),
+    output_dir: Path = typer.Option(..., "--output-dir", "-o"),
+    h_dri_hydrogen_kg_per_tonne_steel: float = typer.Option(
+        TIAM_DEFAULT_H_DRI_HYDROGEN_KG_PER_TONNE_STEEL,
+        "--h-dri-hydrogen-kg-per-tonne-steel",
+        min=0,
+        help="Derived H-DRI hydrogen intensity in kg H2 per tonne of finished steel.",
+    ),
+    no_filter: bool = typer.Option(False, "--no-filter"),
+    encrypt_to: Path | None = typer.Option(None, "--encrypt-to"),
+    key_file: Path | None = typer.Option(None, "--key-file", exists=True, readable=True),
+    overwrite: bool = typer.Option(False, "--overwrite"),
+) -> None:
+    """Derive TIAM-UCL H-DRI hydrogen demand and prepare premise files."""
+
+    _show_reports(
+        prepare_tiam_ucl(
+            inputs,
+            output_dir,
+            h_dri_hydrogen_kg_per_tonne_steel=(h_dri_hydrogen_kg_per_tonne_steel),
             filter_output=not no_filter,
             encrypt_to=encrypt_to,
             key_file=key_file,

@@ -16,6 +16,14 @@ from iam_preprocessor.message import (
     split_message_dri_routes,
 )
 from iam_preprocessor.remind import split_cement_ccs
+from iam_preprocessor.tiam_ucl import (
+    TIAM_DEFAULT_H_DRI_HYDROGEN_KG_PER_TONNE_STEEL,
+    TIAM_H_DRI_HYDROGEN,
+    TIAM_H_DRI_PRODUCTION,
+    TIAM_H_DRI_PRODUCTION_PRODUCT,
+    derive_tiam_h_dri_hydrogen,
+    prepare_tiam_ucl,
+)
 
 
 def test_message_region_cleanup(tmp_path):
@@ -193,6 +201,147 @@ def test_message_dri_route_split_skips_incomplete_inputs():
 
     assert not set(MESSAGE_DERIVED_DRI_ROUTES).intersection(result["Variable"])
     assert any(MESSAGE_SPONGE_IRON_H2 in warning for warning in warnings)
+
+
+def _tiam_h_dri_frame(*, include_product_alias: bool = True) -> pd.DataFrame:
+    values = {"World": 10.0, "AFR": 4.0, "WEU": 6.0}
+    variables = [TIAM_H_DRI_PRODUCTION]
+    if include_product_alias:
+        variables.append(TIAM_H_DRI_PRODUCTION_PRODUCT)
+    return pd.DataFrame(
+        [
+            {
+                "Model": "TIAM-UCL 4.1.2",
+                "Scenario": "SSP2-RCP19",
+                "Region": region,
+                "Variable": variable,
+                "Unit": "Mt/yr",
+                "2050": amount,
+            }
+            for variable in variables
+            for region, amount in values.items()
+        ]
+    )
+
+
+def test_tiam_h_dri_hydrogen_uses_inventory_consistent_default():
+    result, warnings = derive_tiam_h_dri_hydrogen(_tiam_h_dri_frame())
+    derived = result.loc[result["Variable"].eq(TIAM_H_DRI_HYDROGEN)].set_index("Region")
+    pj_per_mt = TIAM_DEFAULT_H_DRI_HYDROGEN_KG_PER_TONNE_STEEL * 0.12
+
+    assert derived.loc["World", "2050"] == pytest.approx(10 * pj_per_mt)
+    assert derived.loc["AFR", "2050"] == pytest.approx(4 * pj_per_mt)
+    assert derived["Unit"].unique().tolist() == ["PJ/yr"]
+    assert derived.loc[["AFR", "WEU"], "2050"].sum() == pytest.approx(derived.loc["World", "2050"])
+    assert warnings == []
+
+
+def test_tiam_h_dri_hydrogen_accepts_explicit_intensity():
+    result, _ = derive_tiam_h_dri_hydrogen(_tiam_h_dri_frame(), hydrogen_kg_per_tonne_steel=50)
+    world = result.loc[
+        result["Variable"].eq(TIAM_H_DRI_HYDROGEN) & result["Region"].eq("World"),
+        "2050",
+    ].item()
+
+    assert world == pytest.approx(60)
+
+
+def test_tiam_h_dri_hydrogen_is_idempotent():
+    first, _ = derive_tiam_h_dri_hydrogen(_tiam_h_dri_frame())
+    second, _ = derive_tiam_h_dri_hydrogen(first)
+
+    first = first.sort_values(["Region", "Variable"]).reset_index(drop=True)
+    second = second.sort_values(["Region", "Variable"]).reset_index(drop=True)
+    pd.testing.assert_frame_equal(first, second)
+
+
+def test_tiam_h_dri_hydrogen_rejects_inconsistent_production_aliases():
+    frame = _tiam_h_dri_frame()
+    mask = frame["Variable"].eq(TIAM_H_DRI_PRODUCTION_PRODUCT) & frame["Region"].eq("AFR")
+    frame.loc[mask, "2050"] = 5
+
+    with pytest.raises(DataValidationError, match="production aliases disagree"):
+        derive_tiam_h_dri_hydrogen(frame)
+
+
+def test_tiam_h_dri_hydrogen_rejects_invalid_alias_unit():
+    frame = _tiam_h_dri_frame()
+    frame.loc[frame["Variable"].eq(TIAM_H_DRI_PRODUCTION_PRODUCT), "Unit"] = "PJ/yr"
+
+    with pytest.raises(DataValidationError, match="aliases must use Mt/yr"):
+        derive_tiam_h_dri_hydrogen(frame)
+
+
+def test_tiam_h_dri_hydrogen_rejects_inconsistent_world_total():
+    frame = _tiam_h_dri_frame(include_product_alias=False)
+    frame.loc[frame["Region"].eq("World"), "2050"] = 11
+
+    with pytest.raises(DataValidationError, match="World versus regional totals"):
+        derive_tiam_h_dri_hydrogen(frame)
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "message"),
+    [
+        ("2050", -1, "must be non-negative"),
+        ("Unit", "EJ/yr", "production in Mt/yr"),
+    ],
+)
+def test_tiam_h_dri_hydrogen_rejects_invalid_production(column, value, message):
+    frame = _tiam_h_dri_frame(include_product_alias=False)
+    frame.loc[frame["Region"].eq("AFR"), column] = value
+
+    with pytest.raises(DataValidationError, match=message):
+        derive_tiam_h_dri_hydrogen(frame)
+
+
+@pytest.mark.parametrize("intensity", [0, -1, float("nan"), float("inf")])
+def test_tiam_h_dri_hydrogen_rejects_invalid_intensity(intensity):
+    with pytest.raises(DataValidationError, match="positive finite"):
+        derive_tiam_h_dri_hydrogen(_tiam_h_dri_frame(), hydrogen_kg_per_tonne_steel=intensity)
+
+
+def test_tiam_h_dri_hydrogen_skips_missing_production():
+    frame = _tiam_h_dri_frame().loc[lambda data: data["Variable"].eq("missing")]
+    result, warnings = derive_tiam_h_dri_hydrogen(frame)
+
+    assert result.empty
+    assert any("no H-DRI/EAF production" in warning for warning in warnings)
+
+
+def test_tiam_pipeline_reports_derivation_assumptions(tmp_path):
+    source = tmp_path / "tiam-ucl_SSP2-RCP19.csv"
+    frame = _tiam_h_dri_frame()
+    efficiency_variants = pd.DataFrame(
+        [
+            {
+                "Model": "TIAM-UCL 4.1.2",
+                "Scenario": "SSP2-RCP19",
+                "Region": "AFR",
+                "Variable": "Efficiency|Transport|Truck|Heavy|Diesel",
+                "Unit": "Bvkm/PJ",
+                "2050": value,
+            }
+            for value in (0.1, 0.2, 0.2)
+        ]
+    )
+    pd.concat([frame, efficiency_variants], ignore_index=True).to_csv(source, index=False)
+
+    reports = prepare_tiam_ucl([source], tmp_path / "out")
+    output = pd.read_csv(reports[0].output_path, sep=";")
+    assumptions = reports[0].assumptions["tiam_ucl_h_dri_hydrogen"]
+    efficiency = output.loc[output["Variable"].eq("Efficiency|Transport|Truck|Heavy|Diesel")]
+
+    assert TIAM_H_DRI_HYDROGEN in output["Variable"].values
+    assert efficiency["2050"].tolist() == [0.1, 0.2, 0.2]
+    assert reports[0].derived_variables == [TIAM_H_DRI_HYDROGEN]
+    assert reports[0].input_rows == len(frame) + 3
+    assert any("non-unique IAM identities" in warning for warning in reports[0].warnings)
+    assert assumptions["hydrogen_kg_per_tonne_steel"] == pytest.approx(
+        TIAM_DEFAULT_H_DRI_HYDROGEN_KG_PER_TONNE_STEEL
+    )
+    assert assumptions["intensity_source"] == "premise H2-DRI/EAF inventory"
+    assert "not an original TIAM-UCL" in assumptions["interpretation"]
 
 
 def test_remind_cement_ccs_split_closes():

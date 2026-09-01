@@ -15,6 +15,7 @@ the results with the standard Premise key.
 | IMAGE | Derives transport energy-service variables, including explicit battery-electric medium- and heavy-truck variables when SEC assumptions are supplied. |
 | MESSAGE | Splits aggregate DRI/EAF steel into mutually exclusive NG-DRI, NG-DRI+CCS, and H-DRI routes, normalizes region labels, and removes the unsupported global aggregate. |
 | REMIND | Splits cement production and energy use into CCS and non-CCS variables and removes legacy aggregate regions. |
+| TIAM-UCL | Derives H-DRI hydrogen final energy from reported finished-steel production using an explicit, configurable inventory-consistent intensity. |
 | Any supported table | Filters variables using the `premise` variable-prefix allowlist. |
 
 Inputs can be CSV or Excel files. Each model workflow writes a semicolon-delimited
@@ -47,6 +48,7 @@ input directory:
 ```console
 iam-preprocessor message message-inputs --output-dir processed/message
 iam-preprocessor remind remind-inputs --output-dir processed/remind
+iam-preprocessor tiam-ucl tiam-inputs --output-dir processed/tiam-ucl
 iam-preprocessor image image-inputs --output-dir processed/image \
   --sec-config assumptions.yaml
 ```
@@ -129,6 +131,29 @@ The REMIND workflow:
 Zero capture-plus-emissions denominators produce a zero CCS share. Rates outside
 the interval from zero to one are clipped and recorded as validation warnings.
 
+### TIAM-UCL
+
+TIAM-UCL reports finished H-DRI/EAF steel production but omits the associated
+hydrogen input from its exported final-energy coordinates. The workflow adds
+`Final Energy|Production|Steel|Secondary|DRH2 and EAF|Hydrogen` in PJ/yr for
+every reported region and year.
+
+The default intensity is 66.52317888 kg H2 per tonne of finished steel,
+equivalent to 7.9827814656 PJ H2 per Mt steel with a hydrogen lower heating
+value of 120 GJ/t. It is calculated from the premise H2-DRI/EAF inventory's
+1.061992 kg H2-DRI pig-iron input per kg steel and 0.06264 kg hydrogen input per
+kg H2-DRI pig iron. Override it explicitly with
+`--h-dri-hydrogen-kg-per-tonne-steel` when a reviewed TIAM-specific coefficient
+becomes available.
+
+Processing reports label the coordinate as a derived proxy rather than an
+original TIAM-UCL observation and record the effective intensity, conversion,
+inventory coefficients, and references. The workflow rejects negative or
+non-numeric production, incompatible units, inconsistent duplicate production
+aliases, and non-closing World totals. TIAM-UCL's distinct transport-efficiency
+variants that share a public IAM identity are preserved and reported rather
+than silently discarded.
+
 ## Variable filtering
 
 Model workflows filter their results by default. A scenario table can also be
@@ -194,7 +219,7 @@ for report in reports:
     print(report.output_path, report.output_rows)
 ```
 
-The public API also provides `prepare_image`, `prepare_remind`,
+The public API also provides `prepare_image`, `prepare_remind`, `prepare_tiam_ucl`,
 `filter_variables`, `encrypt_file`, `decrypt_file`, and the transport derivation
 functions. Build the complete API reference with:
 

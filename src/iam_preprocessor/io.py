@@ -53,7 +53,7 @@ def year_columns(data: pd.DataFrame) -> list[str]:
     )
 
 
-def validate_frame(data: pd.DataFrame) -> None:
+def validate_frame(data: pd.DataFrame, *, allow_duplicate_identities: bool = False) -> None:
     """Validate the shared IAM tabular schema and row uniqueness."""
 
     missing = [column for column in REQUIRED_COLUMNS if column not in data.columns]
@@ -69,17 +69,24 @@ def validate_frame(data: pd.DataFrame) -> None:
         )
     keys = ["Model", "Scenario", "Region", "Variable"]
     duplicates = data.duplicated(keys, keep=False)
-    if duplicates.any():
+    if duplicates.any() and not allow_duplicate_identities:
         sample = data.loc[duplicates, keys].head(5).to_dict(orient="records")
         raise DataValidationError(f"Duplicate IAM rows for {keys}: {sample}")
 
 
-def read_frame(path: str | Path, *, drop_exact_duplicates: bool = False) -> pd.DataFrame:
+def read_frame(
+    path: str | Path,
+    *,
+    drop_exact_duplicates: bool = False,
+    allow_duplicate_identities: bool = False,
+) -> pd.DataFrame:
     """Read an IAM Excel or comma/semicolon-delimited CSV file.
 
     ``drop_exact_duplicates`` is reserved for source exports known to repeat
-    byte-equivalent IAM rows. Conflicting rows with the same IAM identity are
-    still rejected by :func:`validate_frame`.
+    byte-equivalent IAM rows. ``allow_duplicate_identities`` is reserved for
+    exports such as TIAM-UCL that intentionally expose distinct technology
+    variants under the same public IAM identity. Both behaviors are opt-in;
+    strict uniqueness remains the default.
     """
 
     source = Path(path)
@@ -99,7 +106,7 @@ def read_frame(path: str | Path, *, drop_exact_duplicates: bool = False) -> pd.D
         duplicate_rows_removed = int(frame.duplicated(keep="first").sum())
         if duplicate_rows_removed:
             frame = frame.drop_duplicates(keep="first").reset_index(drop=True)
-    validate_frame(frame)
+    validate_frame(frame, allow_duplicate_identities=allow_duplicate_identities)
     frame.attrs["exact_duplicate_rows_removed"] = duplicate_rows_removed
     return frame
 

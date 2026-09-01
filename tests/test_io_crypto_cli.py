@@ -3,12 +3,15 @@ from __future__ import annotations
 import json
 
 import pandas as pd
+import pytest
 from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
 from iam_preprocessor.cli import app
 from iam_preprocessor.crypto import decrypt_file, encrypt_file
+from iam_preprocessor.exceptions import DataValidationError
 from iam_preprocessor.image import prepare_image
+from iam_preprocessor.io import read_frame
 
 
 def test_crypto_roundtrip_uses_runtime_environment(tmp_path, monkeypatch):
@@ -71,6 +74,7 @@ def test_cli_help_and_image_skip_bev(tmp_path):
     help_result = runner.invoke(app, ["--help"])
     assert help_result.exit_code == 0
     assert "image" in help_result.stdout
+    assert "tiam-ucl" in help_result.stdout
 
     source = tmp_path / "simple.csv"
     pd.DataFrame(
@@ -92,3 +96,25 @@ def test_cli_help_and_image_skip_bev(tmp_path):
     )
     assert result.exit_code == 0, result.output
     assert (output / "simple_filtered.csv").exists()
+
+
+def test_read_frame_preserves_strict_duplicate_identity_default(tmp_path):
+    source = tmp_path / "duplicate-identities.csv"
+    rows = [
+        {
+            "Model": "TIAM-UCL 4.1.2",
+            "Scenario": "test",
+            "Region": "AFR",
+            "Variable": "Efficiency|Transport|Truck|Heavy|Diesel",
+            "Unit": "Bvkm/PJ",
+            "2050": value,
+        }
+        for value in (0.1, 0.2)
+    ]
+    pd.DataFrame(rows).to_csv(source, index=False)
+
+    with pytest.raises(DataValidationError, match="Duplicate IAM rows"):
+        read_frame(source)
+
+    result = read_frame(source, allow_duplicate_identities=True)
+    assert result["2050"].tolist() == [0.1, 0.2]
