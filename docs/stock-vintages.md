@@ -271,3 +271,11 @@ The exact installed 1.1.0 code and the local pinned REMIND/reporting-code eviden
 were inspected. Current online documentation may describe a later release.
 Exact REMIND run/reporter identity remains unresolved; the directory label alone
 does not prove it. See the validation document for supported and deferred claims.
+
+## Historical evidence and annual-age service profiles
+
+The implemented campaign, empirical limitations and opt-in `age_profile` CSV
+contract are documented in [remind-evidence-results.md](remind-evidence-results.md).
+Only offshore wind qualifies for a new default in the current pilot. Other
+usage candidates remain sensitivities; all stock distributions and production
+coefficient totals are unchanged.

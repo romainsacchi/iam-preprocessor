@@ -6,6 +6,7 @@ from math import gamma
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from iam_preprocessor.io import read_frame, sha256_file, year_columns
 from iam_preprocessor.stock_vintages import PREFIX
@@ -63,6 +64,26 @@ def validate(report_path):
                     values * totals[:, None], quantities, rtol=1e-10, atol=1e-12
                 )
             elif "service" in config:
+                weighting = config["service_weighting"]
+                if weighting["kind"] == "age_profile":
+                    if sha256_file(weighting["age_profile_file"]) != asset["age_profile_sha256"]:
+                        raise ValueError("Age profile hash mismatch")
+                    curve = (
+                        pd.read_csv(weighting["age_profile_file"])
+                        .set_index("age")["factor"]
+                        .to_dict()
+                    )
+                    # Scalar independent lookup checks ageing and explicit tail behavior.
+                    expected = quantities * np.array(
+                        [
+                            [0 if c > y else curve[min(y - c, max(curve))] for c in cohorts]
+                            for y in years
+                        ]
+                    )
+                    for t, y in enumerate(years[1:], 1):
+                        expected[t, cohorts == y] *= weighting.get("new_cohort_exposure", 1)
+                    expected /= expected.sum(axis=1)[:, None]
+                    np.testing.assert_allclose(values, expected, rtol=1e-10, atol=1e-12)
                 service = (
                     region.loc[[prefix + f"Service|Vintage|{c}" for c in cohorts], labels]
                     .to_numpy(float)

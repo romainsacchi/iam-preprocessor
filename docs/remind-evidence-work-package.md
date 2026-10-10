@@ -1,6 +1,10 @@
 # REMIND evidence work package: implementation plan for priorities 1–3
 
-Status: planned; implementation has not started. Prepared 2026-10-10 against
+**Implementation:** completed on `feat/stock-evidence-validation`. See
+[results, decisions and reproduction instructions](remind-evidence-results.md).
+The frozen protocol remains unchanged.
+
+Status: implemented. Original plan prepared 2026-10-10 against
 `feat/stock-sector-expansion`, baseline commit
 `83cf844b169a9057131cf906941488701b58a50d`.
 
