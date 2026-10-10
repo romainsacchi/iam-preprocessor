@@ -65,6 +65,9 @@ The feature is opt-in and produces labelled reconstructions, not native IAM
 vintages. No new lifetime defaults are applied to other preprocessing commands.
 See the [configuration, method and variable contract](docs/stock-vintages.md)
 and [single-scenario validation strategy](docs/stock-vintage-validation.md).
+The [expanded REMIND example](docs/remind-sector-expansion.md) adds liquid-fuel
+cars, onshore/offshore wind, nuclear, gas turbines, geothermal and CSP, with
+audited DfT/EIA initial cohorts and explicit category limitations.
 
 ## Model-specific transformations
 

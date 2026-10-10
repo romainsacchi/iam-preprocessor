@@ -27,11 +27,17 @@ class CohortResult:
     balance: np.ndarray
 
 
-def survival_matrix(years, means, *, distribution, shape=None):
+def survival_matrix(years, means, *, distribution, shape=None, conditional_year=None):
     """Build a flodym survival matrix with end-year entry and cohort lifetimes.
 
     End-year entry makes the first-year surviving fraction one. It is a
     declared annual timing convention, not an estimate of commissioning dates.
+
+    For observed initial stock, ``conditional_year`` conditions pre-existing
+    Weibull cohorts on survival to that year in log space. Their pre-reference
+    lower triangle is one and must not be interpreted as historical survival.
+    This avoids dividing two underflowed probabilities for rare old survivors.
+    Fixed lifetimes remain unchanged: observations beyond that age are invalid.
     Weibull means are converted to scale; shape is an independent assumption.
     """
     try:
@@ -58,7 +64,19 @@ def survival_matrix(years, means, *, distribution, shape=None):
         )
     else:
         raise DataValidationError("Lifetime distribution must be fixed or weibull.")
-    return np.asarray(model.sf)
+    sf = np.asarray(model.sf).copy()
+    if conditional_year is not None:
+        if conditional_year not in years:
+            raise DataValidationError("Conditional survival year must be in the model years.")
+        if distribution == "weibull":
+            dates = np.asarray(years)
+            initial = dates <= conditional_year
+            ages = np.maximum(0, dates[:, None] - dates[None, initial])
+            reference_ages = conditional_year - dates[initial]
+            scale = means[initial] / gamma(1 + 1 / shape)
+            hazard = np.maximum(0, (ages / scale) ** shape - (reference_ages / scale) ** shape)
+            sf[:, initial] = np.exp(-hazard) * (dates[:, None] >= dates[None, initial])
+    return sf
 
 
 def reconstruct(*, years, reference_year, initial, survival, targets, mode, exit_policy):

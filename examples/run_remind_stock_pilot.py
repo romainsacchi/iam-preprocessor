@@ -283,22 +283,22 @@ def plot_results(output, report):
     plt.close(fig)
 
 
-def record_rejected_sensitivities(source, config_path):
+def record_rejected_sensitivities(source, config_path, *, primary_ids=None):
     """Keep physical service-limit failures visible without exporting invalid profiles.
 
     Primary cases, solver failures and other data errors always abort. Only
     optional sensitivity cases exceeding the declared service bound are excluded.
     """
     frame, config = read_frame(source), load_stock_config(config_path)
+    primary_ids = set(FILES if primary_ids is None else primary_ids)
     rejected = []
     for asset in config["assets"]:
         try:
             _asset_result(frame, asset, config["reference_year"], config["end_year"])
         except DataValidationError as exc:
-            if asset["id"] in FILES or "service exceeds the declared per-stock bound" not in str(
-                exc
-            ):
-                raise
+            service_bound_failure = "service exceeds the declared per-stock bound" in str(exc)
+            if asset["id"] in primary_ids or not service_bound_failure:
+                raise DataValidationError(f"{asset['id']}/{asset['region']}: {exc}") from exc
             rejected.append({"asset": asset["id"], "reason": str(exc), "configuration": asset})
     raw = yaml.safe_load(config_path.read_text())
     ids = {item["asset"] for item in rejected}

@@ -171,45 +171,56 @@ def fit_annual_additions(
             result += 2 * inflow_weight * flow_matrix.T @ (flow_matrix @ x - flow_rhs)
         return result
 
-    optimized = minimize(
-        objective,
-        feasible.x[:n],
-        jac=gradient,
-        method="SLSQP",
-        bounds=Bounds(0, np.inf),
-        constraints=constraints,
-        options={"ftol": 1e-13, "maxiter": 2000},
-    )
-    if not optimized.success:
-        raise DataValidationError(f"Joint smooth annual fit failed: {optimized.message}")
-    values = optimized.x[:n]
-    if (values < -1e-10).any():
-        raise DataValidationError("Annual fit produced negative additions.")
-    values = np.maximum(values, 0)
-    stock_error = response @ values - stock_rhs
-    errors = flow_matrix @ values - flow_rhs
-    if np.max(np.abs(stock_error), initial=0) > 1e-8:
-        raise DataValidationError("Annual fit did not preserve stock anchors.")
-    if exact and np.max(np.abs(errors), initial=0) > 1e-8:
-        raise DataValidationError("Annual fit did not preserve inflow constraints.")
-    # Independently check first-order optimality of this convex problem. Bounds
-    # active at numerical zero may carry nonnegative Lagrange multipliers.
-    active = np.flatnonzero(values < 1e-9)
-    kkt_matrix = np.c_[equality.T, -np.eye(n)[:, active]]
-    dual = lsq_linear(
-        kkt_matrix,
-        -gradient(values),
-        method="bvls",
-        tol=1e-12,
-        bounds=(
-            np.r_[np.full(len(target), -np.inf), np.zeros(len(active))],
-            np.full(len(target) + len(active), np.inf),
-        ),
-    )
-    stationarity = float(np.max(np.abs(kkt_matrix @ dual.x + gradient(values))))
-    complementarity = float(np.max(np.abs(dual.x[len(target) :] * values[active]), initial=0))
-    if not dual.success or stationarity > 2e-6 or complementarity > 1e-8:
-        raise DataValidationError("Annual fit failed its independent convex optimality check.")
+    # A tighter tolerance is needed for some nearly stationary declining stocks.
+    # Retry only if the independent KKT certificate requires it; demanding this
+    # tolerance universally can stall SLSQP on degenerate bound-active faces.
+    start = feasible.x[:n]
+    for ftol in (1e-13, 1e-15):
+        optimized = minimize(
+            objective,
+            start,
+            jac=gradient,
+            method="SLSQP",
+            bounds=Bounds(0, np.inf),
+            constraints=constraints,
+            options={"ftol": ftol, "maxiter": 2000},
+        )
+        if not optimized.success:
+            raise DataValidationError(f"Joint smooth annual fit failed: {optimized.message}")
+        values = optimized.x[:n]
+        if (values < -1e-10).any():
+            raise DataValidationError("Annual fit produced negative additions.")
+        values = np.maximum(values, 0)
+        stock_error = response @ values - stock_rhs
+        errors = flow_matrix @ values - flow_rhs
+        if np.max(np.abs(stock_error), initial=0) > 1e-8:
+            raise DataValidationError("Annual fit did not preserve stock anchors.")
+        if exact and np.max(np.abs(errors), initial=0) > 1e-8:
+            raise DataValidationError("Annual fit did not preserve inflow constraints.")
+        # Independently certify convex optimality including nonnegative bounds.
+        active = np.flatnonzero(values < 1e-9)
+        kkt_matrix = np.c_[equality.T, -np.eye(n)[:, active]]
+        dual = lsq_linear(
+            kkt_matrix,
+            -gradient(values),
+            method="bvls",
+            tol=1e-12,
+            bounds=(
+                np.r_[np.full(len(target), -np.inf), np.zeros(len(active))],
+                np.full(len(target) + len(active), np.inf),
+            ),
+        )
+        stationarity = float(np.max(np.abs(kkt_matrix @ dual.x + gradient(values))))
+        complementarity = float(np.max(np.abs(dual.x[len(target) :] * values[active]), initial=0))
+        if dual.success and stationarity <= 2e-6 and complementarity <= 1e-8:
+            break
+        start = values
+    else:
+        raise DataValidationError(
+            "Annual fit failed its independent convex optimality check: "
+            f"stationarity={stationarity:.6g}, complementarity={complementarity:.6g}, "
+            f"dual_success={dual.success}."
+        )
     return values * scale, {
         "exact_inflow_constraints_feasible": exact,
         "inflow_constraint_policy": inflow_constraints,
@@ -221,6 +232,7 @@ def fit_annual_additions(
         "inflow_weight": inflow_weight,
         "objective": float(objective(optimized.x)),
         "iterations": int(optimized.nit),
+        "final_solver_ftol": ftol,
         "kkt_stationarity_max": stationarity,
         "kkt_complementarity_max": complementarity,
         "solver": "SciPy HiGHS linear feasibility / SLSQP convex quadratic smoothing",

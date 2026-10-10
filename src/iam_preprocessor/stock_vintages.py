@@ -124,7 +124,11 @@ def _asset_result(frame, asset, reference_year, end_year):
         else lifetime["mean"]
     )
     sf = survival_matrix(
-        years.tolist(), means, distribution=lifetime["distribution"], shape=lifetime.get("shape")
+        years.tolist(),
+        means,
+        distribution=lifetime["distribution"],
+        shape=lifetime.get("shape"),
+        conditional_year=reference_year if observed is not None else None,
     )
     initial = np.zeros(len(years))
     factors = np.ones(len(years))

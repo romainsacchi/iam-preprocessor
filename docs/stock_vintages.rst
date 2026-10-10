@@ -2,8 +2,11 @@ Stock-vintage enrichment
 ========================
 
 Install ``iam-preprocessor[stocks]`` to use the optional flodym backend. The
-runtime consumer does not need flodym. The supported local example uses REMIND
-SSP2-NPi2025 for passenger BEVs, heavy trucks, PV and unabated CCGT.
+runtime consumer does not need flodym. The supported local examples use REMIND
+SSP2-NPi2025 for passenger BEVs, heavy trucks, PV and unabated CCGT, with an
+extension to liquid-fuel cars, onshore/offshore wind, nuclear, gas turbines,
+geothermal and CSP. Mappings, initial observations, unresolved boundaries and
+reproduction commands are in ``docs/remind-sector-expansion.md``.
 
 .. code-block:: console
 
