@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 DEFAULT_PREFIXES = (
+    "Stock Vintage|v1|",
     "Distance",
     "Energy Service",
     "ES",

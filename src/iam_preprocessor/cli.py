@@ -14,6 +14,7 @@ from .image import prepare_image
 from .io import discover_inputs, read_frame, write_csv_atomic
 from .message import prepare_message
 from .remind import prepare_remind
+from .stock_vintages import prepare_stock_vintages
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -108,6 +109,32 @@ def remind_command(
             key_file=key_file,
             overwrite=overwrite,
         )
+    )
+
+
+@app.command("stock-vintages")
+def stock_vintages_command(
+    source: Path = typer.Argument(..., exists=True, readable=True, dir_okay=False),
+    config: Path = typer.Option(..., "--config", exists=True, readable=True, dir_okay=False),
+    output_dir: Path = typer.Option(..., "--output-dir", "-o"),
+    filter_output: bool = typer.Option(False, "--filter-output"),
+    encrypt_to: Path | None = typer.Option(None, "--encrypt-to"),
+    key_file: Path | None = typer.Option(None, "--key-file", exists=True, readable=True),
+    overwrite: bool = typer.Option(False, "--overwrite"),
+) -> None:
+    """Reconstruct stock vintages with flodym and append premise-readable variables."""
+    _show_reports(
+        [
+            prepare_stock_vintages(
+                source,
+                output_dir,
+                config,
+                filter_output=filter_output,
+                encrypt_to=encrypt_to,
+                key_file=key_file,
+                overwrite=overwrite,
+            )
+        ]
     )
 
 

@@ -103,7 +103,7 @@ def prepare_remind(
 
     destinations = Path(output_dir)
     reports: list[ProcessingReport] = []
-    for source in discover_inputs(inputs, suffixes=(".csv",)):
+    for source in discover_inputs(inputs, suffixes=(".csv", ".mif")):
         frame = read_frame(source)
         report = ProcessingReport(
             model="remind",

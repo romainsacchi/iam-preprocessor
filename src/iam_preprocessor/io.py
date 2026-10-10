@@ -81,7 +81,7 @@ def read_frame(path: str | Path) -> pd.DataFrame:
     suffix = source.suffix.lower()
     if suffix in {".xlsx", ".xls"}:
         frame = pd.read_excel(source)
-    elif suffix == ".csv":
+    elif suffix in {".csv", ".mif"}:
         with source.open("r", encoding="utf-8-sig", errors="replace") as stream:
             first_line = stream.readline()
         separator = ";" if first_line.count(";") > first_line.count(",") else ","

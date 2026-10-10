@@ -16,6 +16,7 @@ the results with the standard Premise key.
 | MESSAGE | Normalizes region labels and removes the unsupported global aggregate. |
 | REMIND | Splits cement production and energy use into CCS and non-CCS variables and removes legacy aggregate regions. |
 | Any supported table | Filters variables using the `premise` variable-prefix allowlist. |
+| Opt-in stock vintages | Uses flodym lifetime models and explicit initial cohorts to append stock/service vintage variables. First reviewed example: REMIND SSP2-NPi2025, cars, trucks, PV and CCGT. |
 
 Inputs can be CSV or Excel files. Each model workflow writes a semicolon-delimited
 CSV and a JSON processing report containing source and output hashes, row counts,
@@ -52,6 +53,18 @@ iam-preprocessor image image-inputs --output-dir processed/image \
 ```
 
 Run `iam-preprocessor COMMAND --help` for all options available to a workflow.
+
+To reconstruct stock vintages from a CSV, REMIND MIF or Excel table:
+
+```console
+python -m pip install -e '.[stocks]'
+iam-preprocessor stock-vintages scenario.mif --config stocks.yaml -o output/stocks
+```
+
+The feature is opt-in and produces labelled reconstructions, not native IAM
+vintages. No new lifetime defaults are applied to other preprocessing commands.
+See the [configuration, method and variable contract](docs/stock-vintages.md)
+and [single-scenario validation strategy](docs/stock-vintage-validation.md).
 
 ## Model-specific transformations
 

@@ -22,6 +22,18 @@ Model workflows
 .. automodule:: iam_preprocessor.remind
    :members:
 
+Stock-vintage enrichment
+------------------------
+
+.. automodule:: iam_preprocessor.stock_vintages
+   :members:
+
+.. automodule:: iam_preprocessor.stock_model
+   :members:
+
+.. automodule:: iam_preprocessor.stock_config
+   :members: load_stock_config
+
 Transport, filtering, and cryptography
 ---------------------------------------
 

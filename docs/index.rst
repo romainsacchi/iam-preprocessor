@@ -10,5 +10,6 @@ of the package.
 
    usage
    methodology
+   stock_vintages
    security
    api
