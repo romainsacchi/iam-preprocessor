@@ -40,3 +40,8 @@ Original inventory coefficients and common amortisation remain unchanged.
 The complete YAML contract, equations, example and limitations are maintained in
 ``docs/stock-vintages.md`` in the repository. The reproducible local campaign and
 acceptance checks are in ``docs/stock-vintage-validation.md``.
+
+The planned next evidence package is described in
+``docs/remind-evidence-work-package.md`` and its source/validation rules in
+``docs/remind-evidence-protocol.md``. It addresses stock comparability,
+historical cohort evaluation and service weighting for the existing groups.

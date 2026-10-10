@@ -152,6 +152,13 @@ test constants; they do not constitute reviewed production-burden bindings.
 
 ## Deferred groups and next priorities
 
+The next implementation package is specified in the
+[priorities 1–3 plan](remind-evidence-work-package.md), with a separate
+[data and validation protocol](remind-evidence-protocol.md). It covers stock
+comparability, historical cohort evaluation and service weighting for the
+existing eleven groups.
+
+
 | Group | Blocking issue for a defensible default | Work possible with current files |
 |---|---|---|
 | Separate petrol/diesel trajectories | Native fleet is combined | Keep combined profile and initial-composition sensitivities; require declared split before separate binding |
