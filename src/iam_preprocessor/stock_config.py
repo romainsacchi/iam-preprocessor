@@ -185,7 +185,13 @@ def load_stock_config(path):
         fields(
             service,
             ("kind", "annual_age_decay", "provenance"),
-            ("future_factor", "new_cohort_exposure", "maximum_service_per_stock"),
+            (
+                "future_factor",
+                "new_cohort_exposure",
+                "maximum_service_per_stock",
+                "age_profile_file",
+                "tail_policy",
+            ),
         )
         positive(service["annual_age_decay"], "annual_age_decay", zero=True)
         positive(service.get("new_cohort_exposure", 1.0), "new_cohort_exposure", zero=True)
@@ -202,6 +208,30 @@ def load_stock_config(path):
                 raise DataValidationError(
                     "Observed service factors require observed initial cohorts."
                 )
+        elif service["kind"] == "age_profile":
+            nonempty(service.get("age_profile_file"), "age profile file")
+            if (
+                service.get("tail_policy") != "hold_last"
+                or "future_factor" in service
+                or service["annual_age_decay"] != 0
+            ):
+                raise DataValidationError(
+                    "Age profiles require explicit hold_last tails and zero extra decay."
+                )
+            service["age_profile_file"] = str(
+                (source.parent / service["age_profile_file"]).resolve()
+            )
+            from .stock_usage import read_age_profile
+
+            read_age_profile(service["age_profile_file"])
         elif service["kind"] != "equal" or "future_factor" in service:
-            raise DataValidationError("Service weighting must be equal or observed_factors.")
+            raise DataValidationError(
+                "Service weighting must be equal, observed_factors or age_profile."
+            )
+        if service["kind"] != "age_profile" and (
+            "age_profile_file" in service or "tail_policy" in service
+        ):
+            raise DataValidationError(
+                "Age profile fields are only valid with age_profile weighting."
+            )
     return config

@@ -177,6 +177,10 @@ def _asset_result(frame, asset, reference_year, end_year):
         )
     ageing = np.maximum(0, service_years[:, None] - np.maximum(reference_year, years)[None, :])
     service = result.stock * factors[None, :] * np.exp(-weighting["annual_age_decay"] * ageing)
+    if weighting["kind"] == "age_profile":
+        from .stock_usage import age_factors
+
+        service = result.stock * age_factors(weighting["age_profile_file"], service_years, years)
     for i, year in enumerate(service_years[1:], start=1):
         service[i, year - first] *= weighting.get("new_cohort_exposure", 1.0)
     total = result.stock.sum(axis=1)
@@ -355,6 +359,10 @@ def enrich_stock_vintages(frame, config):
         }
         if asset["initial"]["kind"] == "observed_shares":
             diagnostic["observation_sha256"] = sha256_file(asset["initial"]["file"])
+        if asset["service_weighting"]["kind"] == "age_profile":
+            diagnostic["age_profile_sha256"] = sha256_file(
+                asset["service_weighting"]["age_profile_file"]
+            )
         if joint_diagnostics is not None:
             diagnostic["annualisation"] = joint_diagnostics
             diagnostic["stock_residual_basis"] = (
@@ -422,6 +430,7 @@ def prepare_stock_vintages(
                     "stock_vintages.py",
                     "stock_model.py",
                     "stock_config.py",
+                    "stock_usage.py",
                     "stock_annualisation.py",
                     "io.py",
                     "filtering.py",

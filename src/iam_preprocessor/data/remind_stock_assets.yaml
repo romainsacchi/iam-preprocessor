@@ -1,0 +1,286 @@
+schema_version: 1
+assets:
+  passenger-bev:
+    kind: vehicle
+    region: EUR
+    stock:
+      unit: million veh
+      variable: Stock|Transport|Pass|Road|LDV|Four Wheelers|BEV
+    inflow:
+      unit: million veh
+      variable: Sales|Transport|Pass|Road|LDV|Four Wheelers|BEV
+    service:
+      unit: billion pkm/yr
+      variable: ES|Transport|Pass|Road|LDV|Four Wheelers|BEV
+    mean_life: 16
+    shape: 3
+    source_geography: UK
+    cohort_date_kind: first_use_year
+    mapping_status: proxy
+    source_technologies: []
+    status: licensed
+    chp: null
+    required_fuel: null
+    capacity_basis: vehicle
+    baseline_scope: UK age proxy for EUR
+    boundary_note: Observed age composition is a calibrated regional-stock proxy;
+      survival remains assumed.
+  heavy-trucks:
+    kind: vehicle
+    region: EUR
+    stock:
+      unit: million veh
+      variable: Stock|Transport|Freight|Road|Heavy|Truck(40t)|Liquids
+    inflow:
+      unit: million veh
+      variable: Sales|Transport|Freight|Road|Heavy|Truck(40t)|Liquids
+    service:
+      unit: billion tkm/yr
+      variable: ES|Transport|Freight|Road|Heavy|Truck(40t)|Liquids
+    mean_life: 12
+    shape: 3
+    source_geography: UK
+    cohort_date_kind: first_use_year
+    mapping_status: proxy
+    source_technologies: []
+    status: licensed
+    chp: null
+    required_fuel: null
+    capacity_basis: vehicle
+    baseline_scope: UK age proxy for EUR
+    boundary_note: UK HGV stock versus native aggregate trucks; no equal loading or
+      mileage evidence.
+  pv:
+    kind: power
+    region: USA
+    stock:
+      unit: GW
+      variable: Cap|Electricity|Solar|+|PV
+    inflow:
+      unit: GW/yr
+      variable: New Cap|Electricity|Solar|+|PV
+    service:
+      unit: EJ/yr
+      variable: SE|Electricity|Solar|+|PV
+    mean_life: 30
+    shape: 3
+    source_geography: USA
+    cohort_date_kind: operating_year
+    mapping_status: proxy
+    source_technologies:
+    - Solar Photovoltaic
+    status: OP
+    chp: N
+    required_fuel: null
+    capacity_basis: nameplate_MW; PV AC/DC native IAM basis unresolved
+    baseline_scope: selected WECC plants/blocks
+    boundary_note: Utility-scale observed PV; distributed and IAM AC/DC boundaries
+      unresolved.
+  ccgt:
+    kind: power
+    region: USA
+    stock:
+      unit: GW
+      variable: Cap|Electricity|Gas|CC|+|w/o CC
+    inflow:
+      unit: GW/yr
+      variable: New Cap|Electricity|Gas|CC|+|w/o CC
+    service:
+      unit: EJ/yr
+      variable: SE|Electricity|Gas|++|Combined Cycle w/o CC
+    mean_life: 35
+    shape: 3
+    source_geography: USA
+    cohort_date_kind: operating_year
+    mapping_status: proxy
+    source_technologies:
+    - Natural Gas Fired Combined Cycle
+    status: OP
+    chp: N
+    required_fuel: NG
+    capacity_basis: nameplate_MW
+    baseline_scope: selected WECC plants/blocks
+    boundary_note: Generator components summed once; component dates do not establish
+      whole-block construction.
+  passenger-liquids:
+    kind: vehicle
+    region: EUR
+    stock:
+      unit: million veh
+      variable: Stock|Transport|Pass|Road|LDV|Four Wheelers|Liquids
+    inflow:
+      unit: million veh
+      variable: Sales|Transport|Pass|Road|LDV|Four Wheelers|Liquids
+    service:
+      unit: billion pkm/yr
+      variable: ES|Transport|Pass|Road|LDV|Four Wheelers|Liquids
+    mean_life: 16
+    shape: 3
+    source_geography: UK
+    cohort_date_kind: first_use_year
+    mapping_status: proxy
+    source_technologies: []
+    status: licensed
+    chp: null
+    required_fuel: null
+    capacity_basis: vehicle
+    baseline_scope: UK age proxy for EUR
+    boundary_note: Conventional petrol+diesel proxy; native hybrid category relation
+      unresolved.
+  wind-onshore:
+    kind: power
+    region: USA
+    stock:
+      unit: GW
+      variable: Cap|Electricity|Wind|+|Onshore
+    inflow:
+      unit: GW/yr
+      variable: New Cap|Electricity|Wind|+|Onshore
+    service:
+      unit: EJ/yr
+      variable: SE|Electricity|Wind|+|Onshore
+    mean_life: 25
+    shape: 3
+    source_geography: USA
+    cohort_date_kind: operating_year
+    mapping_status: proxy
+    source_technologies:
+    - Onshore Wind Turbine
+    status: OP
+    chp: N
+    required_fuel: null
+    capacity_basis: nameplate_MW
+    baseline_scope: USA
+    boundary_note: Observed age composition is a calibrated regional-stock proxy;
+      survival remains assumed.
+  wind-offshore:
+    kind: power
+    region: USA
+    stock:
+      unit: GW
+      variable: Cap|Electricity|Wind|+|Offshore
+    inflow:
+      unit: GW/yr
+      variable: New Cap|Electricity|Wind|+|Offshore
+    service:
+      unit: EJ/yr
+      variable: SE|Electricity|Wind|+|Offshore
+    mean_life: 25
+    shape: 3
+    source_geography: USA
+    cohort_date_kind: operating_year
+    mapping_status: proxy
+    source_technologies:
+    - Offshore Wind Turbine
+    status: OP
+    chp: N
+    required_fuel: null
+    capacity_basis: nameplate_MW
+    baseline_scope: USA
+    boundary_note: Sparse two-record initial population; native/interpolated timing
+      audited.
+  nuclear:
+    kind: power
+    region: USA
+    stock:
+      unit: GW
+      variable: Cap|Electricity|+|Nuclear
+    inflow:
+      unit: GW/yr
+      variable: New Cap|Electricity|+|Nuclear
+    service:
+      unit: EJ/yr
+      variable: SE|Electricity|+|Nuclear
+    mean_life: 50
+    shape: 3
+    source_geography: USA
+    cohort_date_kind: operating_year
+    mapping_status: proxy
+    source_technologies:
+    - Nuclear
+    status: OP
+    chp: N
+    required_fuel: null
+    capacity_basis: nameplate_MW
+    baseline_scope: USA
+    boundary_note: Observed age composition is a calibrated regional-stock proxy;
+      survival remains assumed.
+  gas-turbine:
+    kind: power
+    region: USA
+    stock:
+      unit: GW
+      variable: Cap|Electricity|Gas|GT
+    inflow:
+      unit: GW/yr
+      variable: New Cap|Electricity|Gas|GT
+    service:
+      unit: EJ/yr
+      variable: SE|Electricity|Gas|++|Gas Turbine
+    mean_life: 30
+    shape: 3
+    source_geography: USA
+    cohort_date_kind: operating_year
+    mapping_status: proxy
+    source_technologies:
+    - Natural Gas Fired Combustion Turbine
+    status: OP
+    chp: N
+    required_fuel: NG
+    capacity_basis: nameplate_MW
+    baseline_scope: USA
+    boundary_note: NG combustion turbine excludes CHP; scenario technology allocation
+      unresolved.
+  geothermal:
+    kind: power
+    region: USA
+    stock:
+      unit: GW
+      variable: Cap|Electricity|+|Geothermal
+    inflow:
+      unit: GW/yr
+      variable: New Cap|Electricity|+|Geothermal
+    service:
+      unit: EJ/yr
+      variable: SE|Electricity|+|Geothermal
+    mean_life: 30
+    shape: 3
+    source_geography: USA
+    cohort_date_kind: operating_year
+    mapping_status: proxy
+    source_technologies:
+    - Geothermal
+    status: OP
+    chp: N
+    required_fuel: null
+    capacity_basis: nameplate_MW
+    baseline_scope: USA
+    boundary_note: Observed age composition is a calibrated regional-stock proxy;
+      survival remains assumed.
+  csp:
+    kind: power
+    region: USA
+    stock:
+      unit: GW
+      variable: Cap|Electricity|Solar|+|CSP
+    inflow:
+      unit: GW/yr
+      variable: New Cap|Electricity|Solar|+|CSP
+    service:
+      unit: EJ/yr
+      variable: SE|Electricity|Solar|+|CSP
+    mean_life: 30
+    shape: 3
+    source_geography: USA
+    cohort_date_kind: operating_year
+    mapping_status: proxy
+    source_technologies:
+    - Solar Thermal without Energy Storage
+    - Solar Thermal with Energy Storage
+    status: OP
+    chp: N
+    required_fuel: null
+    capacity_basis: nameplate_MW
+    baseline_scope: USA
+    boundary_note: Observed age composition is a calibrated regional-stock proxy;
+      survival remains assumed.

@@ -384,3 +384,39 @@ def test_joint_configuration_is_explicit(inputs, problem):
     path.write_text(yaml.safe_dump(config))
     with pytest.raises(DataValidationError):
         load_stock_config(path)
+
+
+def test_age_usage_profile_changes_only_service_and_advances_each_cohort(inputs, tmp_path):
+    frame, config, path, _ = inputs
+    baseline, _ = enrich_stock_vintages(frame, load_stock_config(path))
+    usage = tmp_path / "age.csv"
+    pd.DataFrame({"age": range(31), "factor": [1 / (1 + a) for a in range(31)]}).to_csv(
+        usage, index=False
+    )
+    config["assets"][0]["service_weighting"] = dict(
+        kind="age_profile",
+        age_profile_file="age.csv",
+        tail_policy="hold_last",
+        annual_age_decay=0,
+        provenance="Test annual-age curve",
+    )
+    path.write_text(yaml.safe_dump(config))
+    enriched, diagnostics = enrich_stock_vintages(frame, load_stock_config(path))
+    a, b = [v.set_index("Variable") for v in (baseline, enriched)]
+    stocks = a.index.str.startswith(PREFIX + "cars|Stock")
+    pd.testing.assert_frame_equal(a.loc[stocks], b.loc[stocks])
+    for y in (2020, 2021, 2025):
+        service_ratio = (
+            b.at[PREFIX + "cars|Service Share|Vintage|2010", str(y)]
+            / b.at[PREFIX + "cars|Service Share|Vintage|2020", str(y)]
+        )
+        stock_ratio = (
+            b.at[PREFIX + "cars|Stock|Vintage|2010", str(y)]
+            / b.at[PREFIX + "cars|Stock|Vintage|2020", str(y)]
+        )
+        assert service_ratio / stock_ratio == pytest.approx((1 + y - 2020) / (1 + y - 2010))
+    assert diagnostics[0]["age_profile_sha256"] == sha256_file(usage)
+    config["assets"][0]["service_weighting"]["tail_policy"] = "guess"
+    path.write_text(yaml.safe_dump(config))
+    with pytest.raises(DataValidationError, match="hold_last"):
+        load_stock_config(path)

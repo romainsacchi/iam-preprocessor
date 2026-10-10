@@ -122,16 +122,34 @@ def curate_liquid_cars(path, year=2022):
     }
 
 
-def read_eia_generators(path):
+def read_eia_generators(path, year=2022, *, all_sheets=False):
     with ZipFile(path) as archive:
         workbook = load_workbook(
-            BytesIO(archive.read("3_1_Generator_Y2022.xlsx")), read_only=True, data_only=True
+            BytesIO(archive.read(f"3_1_Generator_Y{year}.xlsx")), read_only=True, data_only=True
         )
     try:
-        rows = workbook["Operable"].iter_rows(values_only=True)
-        next(rows)
-        header = [str(v).strip() if v is not None else "" for v in next(rows)]
-        return [dict(zip(header, row, strict=True)) for row in rows if row[0] is not None]
+        records = []
+        for sheet in workbook.sheetnames if all_sheets else ["Operable"]:
+            rows = workbook[sheet].iter_rows(values_only=True)
+            next(rows)
+            header = [str(v).strip() if v is not None else "" for v in next(rows)]
+            if not {"Plant Code", "Generator ID", "Status"}.issubset(header):
+                raise ValueError(f"Unexpected EIA generator layout: {year}/{sheet}")
+            for source_row, values in enumerate(rows, 3):
+                row = dict(zip(header, values, strict=True))
+                plant = row.get("Plant Code")
+                if plant is None:
+                    continue  # Empty rows and explicitly unkeyed workbook footnotes.
+                if not isinstance(plant, (int, float)) or plant != int(plant):
+                    raise ValueError("Non-integral EIA plant identity")
+                row.update(
+                    source_member=f"3_1_Generator_Y{year}.xlsx",
+                    source_sheet=sheet,
+                    source_row=source_row,
+                    observation_year=year,
+                )
+                records.append(row)
+        return records
     finally:
         workbook.close()
 
@@ -203,3 +221,69 @@ def model_observation(record, reference_year=2022):
     ):
         raise ValueError("Invalid observed stock or unaccounted unknown dates")
     return [dict(cohort=c, amount=v * total / known) for c, v in sorted(cohorts.items())]
+
+
+def curate_vehicle_history(path):
+    """All dated UK stock snapshots, preserving raw fuel and unknown-age counts."""
+    rows = list(ods_rows(path, "VEH1111"))
+    start = next(i for i, r in enumerate(rows) if r and r[0][0].startswith("Geography"))
+    header = [c[0] for c in rows[start]]
+    cols = [(i, int(v)) for i, v in enumerate(header) if v.isdigit()]
+    unknown_col = next(i for i, v in enumerate(header) if v.startswith("Unknown"))
+    total_col = header.index("Total")
+    selections = {
+        ("Cars", "PETROL"): "petrol",
+        ("Cars", "DIESEL"): "diesel",
+        ("Cars", "BATTERY ELECTRIC"): "passenger-bev",
+        ("Heavy goods vehicles", "Total"): "heavy-trucks",
+    }
+    history = {}
+    for index, row in enumerate(rows[start + 1 :], start + 2):
+        if len(row) < len(header) or row[0][0] != "United Kingdom":
+            continue
+        key = (row[3][0], row[4][0])
+        if key not in selections:
+            continue
+        year = int(row[1][0][:4])
+        if row[1][0] != f"{year} Q4 (end December)" or row[2][0] != "Thousands":
+            raise ValueError("Unexpected vehicle observation date/unit")
+        ident = (selections[key], year)
+        if ident in history:
+            raise ValueError("Duplicate UK cohort snapshot")
+        cohorts = {}
+        for col, cohort in cols:
+            if cohort > year:
+                if row[col][0] != "[z]":
+                    raise ValueError("Future observed vehicle cohort")
+            else:
+                value = vehicle_count(row[col])
+                if value:
+                    cohorts[cohort] = value
+        missing, total = vehicle_count(row[unknown_col]), vehicle_count(row[total_col])
+        if sum(cohorts.values()) + missing != total:
+            raise ValueError("UK stock counts do not reconcile")
+        history[ident] = dict(
+            cohorts=cohorts,
+            unknown=missing,
+            total=total,
+            source_rows=[index],
+            observation_year=year,
+            geography="UK",
+        )
+    for year in sorted({y for _, y in history}):
+        members = [history[(fuel, year)] for fuel in ("petrol", "diesel")]
+        cohorts = defaultdict(float)
+        for row in members:
+            for c, q in row["cohorts"].items():
+                cohorts[c] += q
+        history[("passenger-liquids", year)] = dict(
+            cohorts=dict(cohorts),
+            unknown=sum(r["unknown"] for r in members),
+            total=sum(r["total"] for r in members),
+            source_rows=sum((r["source_rows"] for r in members), []),
+            observation_year=year,
+            geography="UK",
+        )
+    if not history:
+        raise ValueError("No selected UK observations")
+    return history
