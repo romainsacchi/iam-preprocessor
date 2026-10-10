@@ -2,6 +2,7 @@
 
 import argparse
 import json
+from math import gamma
 from pathlib import Path
 
 import numpy as np
@@ -85,6 +86,76 @@ def validate(report_path):
                 raise ValueError("Invalid annual flow or reference-year semantics")
             balance += sign * values[1:]
         np.testing.assert_allclose(balance, 0, atol=1e-10 * max(1, totals.max()), rtol=0)
+        joint = asset.get("annualisation")
+        if joint is not None:
+            source_region = original.loc[original.Region.eq(asset["region"])].set_index("Variable")
+            stock_source = source_region.loc[config["stock"]["variable"]]
+            flow_source = source_region.loc[config["inflow"]["variable"]]
+            source_years = set(map(int, columns))
+            for year, actual in zip(years, totals, strict=True):
+                if year in source_years:
+                    np.testing.assert_allclose(
+                        actual, stock_source[str(year)], rtol=1e-8, atol=1e-9
+                    )
+            fit_years = np.asarray(joint["solve_years"][1:])
+            fit_inflows = np.asarray(joint["annual_inflows"])
+            np.testing.assert_allclose(
+                fit_inflows[: len(years) - 1],
+                region.loc[prefix + "Inflow", labels[1:]].to_numpy(float),
+                rtol=1e-12,
+                atol=1e-12,
+            )
+            for constraint in joint["flow_constraints"]:
+                target = float(flow_source[str(constraint["anchor"])])
+                actual = float(fit_inflows[np.isin(fit_years, constraint["years"])].mean())
+                np.testing.assert_allclose(constraint["target_rate"], target, rtol=1e-12)
+                np.testing.assert_allclose(constraint["reconstructed_rate"], actual, rtol=1e-12)
+                np.testing.assert_allclose(constraint["rate_residual"], actual - target, atol=1e-10)
+                if joint["exact_inflow_constraints_feasible"]:
+                    np.testing.assert_allclose(actual, target, rtol=1e-8, atol=1e-8)
+                if "target_total" in constraint:
+                    width = len(constraint["years"])
+                    np.testing.assert_allclose(constraint["target_total"], target * width)
+                    np.testing.assert_allclose(
+                        constraint["total_residual"], (actual - target) * width, atol=1e-8
+                    )
+            # Independent closed-form survival check, without the producer or flodym.
+            law = config["lifetime"]
+            means = np.full(len(cohorts), law["initial_mean"], dtype=float)
+            future = cohorts > years[0]
+            if "source" in law:
+                means[future] = np.interp(
+                    cohorts[future],
+                    list(map(int, columns)),
+                    source_region.loc[law["source"]["variable"], columns].to_numpy(float),
+                )
+            else:
+                means[future] = law["mean"]
+            births = quantities[0].copy()
+            births[future] = fit_inflows[cohorts[future] - years[0] - 1]
+            fractions = dict(
+                zip(joint["solve_years"], joint["additional_exit_fractions"], strict=True)
+            )
+            for index, year in enumerate(years):
+                age = np.maximum(0, year - cohorts)
+                initial_age = np.maximum(0, years[0] - cohorts)
+                if law["distribution"] == "weibull":
+                    scale = means / gamma(1 + 1 / law["shape"])
+                    surviving = np.exp(
+                        -((age / scale) ** law["shape"] - (initial_age / scale) ** law["shape"])
+                    )
+                else:
+                    surviving = (age < means).astype(float)
+                remaining = np.array(
+                    [
+                        np.prod(
+                            [1 - fractions[y] for y in range(max(years[0], int(c)) + 1, year + 1)]
+                        )
+                        for c in cohorts
+                    ]
+                )
+                expected = births * surviving * remaining * (cohorts <= year)
+                np.testing.assert_allclose(quantities[index], expected, rtol=1e-9, atol=1e-9)
         checks.append(
             {
                 "asset": asset["asset"],
@@ -93,6 +164,7 @@ def validate(report_path):
                 "cohorts": len(cohorts),
                 "max_balance_residual": float(np.abs(balance).max()),
                 "passed": True,
+                "joint_source_constraints_checked": joint is not None,
             }
         )
     result = {

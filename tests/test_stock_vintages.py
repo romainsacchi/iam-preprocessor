@@ -281,3 +281,106 @@ def test_shared_asset_id_cannot_hide_unit_differences_between_regions(inputs):
     path.write_text(yaml.safe_dump(config))
     with pytest.raises(DataValidationError, match="consistent units"):
         load_stock_config(path)
+
+
+def test_joint_fits_complete_windows_before_trimming_export(inputs):
+    frame, config, path, _ = inputs
+    config["end_year"] = 2028
+    asset = config["assets"][0]
+    asset.update(
+        mode="joint",
+        annualisation={
+            "inflow_constraints": "penalized",
+            "reference_weight": 0.01,
+            "inflow_weight": 10,
+            "provenance": "Explicit test smoothing/fit weights",
+        },
+    )
+    asset["inflow_timing"] = {
+        "kind": "reported_periods",
+        "provenance": "Test period means",
+        "periods": [
+            {"anchor": 2025, "start": 2021, "end": 2025},
+            {"anchor": 2030, "start": 2026, "end": 2030},
+        ],
+    }
+    path.write_text(yaml.safe_dump(config))
+    enriched, diagnostics = enrich_stock_vintages(frame, load_stock_config(path))
+    joint = diagnostics[0]["annualisation"]
+    assert joint["solve_years"][-1] == 2030
+    assert joint["flow_constraints"][-1]["years"] == list(range(2026, 2031))
+    values = enriched.set_index("Variable")
+    assert values.at[PREFIX + "cars|Coverage", "2028"] == 1
+    assert np.isnan(values.at[PREFIX + "cars|Coverage", "2030"])
+    assert not values.index.str.endswith("|Vintage|2029").any()
+    assert values.at[PREFIX + "cars|Stock", "2025"] == pytest.approx(12)
+    pd.testing.assert_frame_equal(
+        enriched.iloc[: len(frame)][frame.columns].reset_index(drop=True), frame, check_dtype=False
+    )
+
+
+def test_joint_no_extra_exits_does_not_require_linear_intermediate_stocks(inputs):
+    from iam_preprocessor.stock_model import survival_matrix
+
+    frame, config, path, _ = inputs
+    years = np.arange(2020, 2031)
+    frame = frame.astype({str(y): float for y in (2020, 2025, 2030)})
+    sf = survival_matrix(years.tolist(), np.full(len(years), 10), distribution="weibull", shape=3)
+    pd.DataFrame({"cohort": [2020], "amount": [100]}).to_csv(
+        path.parent / "cohorts.csv", index=False
+    )
+    frame.loc[0, ["2020", "2025", "2030"]] = 100 * sf[[0, 5, 10], 0]
+    frame.loc[1, ["2020", "2025", "2030"]] = 0
+    asset = config["assets"][0]
+    asset.update(
+        mode="joint",
+        exit_policy="error",
+        annualisation={
+            "inflow_constraints": "strict",
+            "reference_weight": 0.01,
+            "inflow_weight": 10,
+            "provenance": "Pure natural survival test",
+        },
+    )
+    asset["lifetime"].pop("source")
+    asset["lifetime"].update(initial_mean=10, mean=10)
+    asset["service_weighting"] = {"kind": "equal", "annual_age_decay": 0, "provenance": "test"}
+    path.write_text(yaml.safe_dump(config))
+    enriched, diagnostics = enrich_stock_vintages(frame, load_stock_config(path))
+    values = enriched.set_index("Variable")
+    np.testing.assert_allclose(
+        values.loc[PREFIX + "cars|Stock", list(map(str, years))].to_numpy(float),
+        100 * sf[:, 0],
+        atol=1e-8,
+    )
+    assert diagnostics[0]["total_additional_exits"] == pytest.approx(0)
+
+
+@pytest.mark.parametrize(
+    "problem", ["missing", "typo", "negative_weight", "boolean_weight", "unused"]
+)
+def test_joint_configuration_is_explicit(inputs, problem):
+    _, config, path, _ = inputs
+    asset = config["assets"][0]
+    asset.update(
+        mode="joint",
+        annualisation={
+            "inflow_constraints": "strict",
+            "reference_weight": 0.01,
+            "inflow_weight": 10,
+            "provenance": "Test policy",
+        },
+    )
+    if problem == "missing":
+        asset.pop("annualisation")
+    elif problem == "typo":
+        asset["annualisation"]["inflow_constraints"] = "guess"
+    elif problem == "negative_weight":
+        asset["annualisation"]["reference_weight"] = -1
+    elif problem == "boolean_weight":
+        asset["annualisation"]["inflow_weight"] = True
+    else:
+        asset["mode"] = "stock"
+    path.write_text(yaml.safe_dump(config))
+    with pytest.raises(DataValidationError):
+        load_stock_config(path)

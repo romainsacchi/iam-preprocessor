@@ -7,6 +7,11 @@ flodym. The first application is **REMIND SSP2-NPi2025**, using the existing loc
 reconstructions, not recovery of REMIND's native vintages or a new calibration
 of its exact run. No additional REMIND-team data is required for this route.
 
+The optional [joint annualisation mode](joint-stock-annualisation.md) fits smooth
+annual additions while retaining original stock anchors and reconciling sampled
+sales or complete addition-reporting windows. It is the default in the reviewed
+pilot script; the legacy modes described below remain available unchanged.
+
 ## Architecture and scope
 
 ```text
@@ -68,7 +73,9 @@ are undefined, not zero. Comparison series expose stock and inflow residuals.
 `opening_IAM_stock + reported_inflow - closing_IAM_stock` is also reported;
 negative values indicate infeasibility of those annualized closed-stock totals.
 Feasible totals do not establish the survival law or allocation of exits to
-cohorts. The two modes do not jointly fit inconsistent stock and flow targets.
+cohorts. These two legacy modes do not jointly fit inconsistent stock and flow
+targets. `mode: joint` supplies that separate constrained reconstruction, with
+an explicit strict or penalized inflow policy and a constraint-by-constraint report.
 
 The annual convention is end-year stock and end-year entry for survival. Service
 weights use the serving end-year stock as an annual-service proxy:

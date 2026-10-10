@@ -31,6 +31,9 @@ Stock-vintage enrichment
 .. automodule:: iam_preprocessor.stock_model
    :members:
 
+.. automodule:: iam_preprocessor.stock_annualisation
+   :members:
+
 .. automodule:: iam_preprocessor.stock_config
    :members: load_stock_config
 

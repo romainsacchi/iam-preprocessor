@@ -20,8 +20,10 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from iam_preprocessor.exceptions import DataValidationError
 from iam_preprocessor.io import read_frame, sha256_file
-from iam_preprocessor.stock_vintages import PREFIX, prepare_stock_vintages
+from iam_preprocessor.stock_config import load_stock_config
+from iam_preprocessor.stock_vintages import PREFIX, _asset_result, prepare_stock_vintages
 
 FILES = {
     "passenger-bev": "bev-npi2025-cohorts.json",
@@ -40,10 +42,13 @@ CASES = (
     "age-decay",
     "equilibrium",
     "half-year-entrants",
+    "linear-stock",
+    "inflow-penalty-low",
+    "inflow-penalty-high",
 )
 
 
-def make_config(archive, output, end_year):
+def make_config(archive, output, end_year, annualisation="joint"):
     if not 2030 <= end_year <= 2050:
         raise ValueError(
             "This reviewed REMIND example supports 2030–2050; later periods need review."
@@ -121,7 +126,7 @@ def make_config(archive, output, end_year):
         base = {
             "id": asset,
             "region": "USA" if power else "EUR",
-            "mode": "stock",
+            "mode": annualisation,
             "exit_policy": "proportional",
             "stock": selector("capacity" if power else "stock"),
             "inflow": selector("additions" if power else "sales"),
@@ -152,11 +157,28 @@ def make_config(archive, output, end_year):
             base["service_weighting"]["future_factor"] = 1
             # EJ/yr per GW, equivalent to 8760 full-load hours (365-day convention).
             base["service_weighting"]["maximum_service_per_stock"] = 0.031536
+        if annualisation == "joint":
+            base["annualisation"] = {
+                "inflow_constraints": "penalized",
+                "reference_weight": 0.01,
+                "inflow_weight": 10,
+                "provenance": "Exact native stock anchors; source inflow samples/window "
+                "means imposed when feasible. Otherwise balance squared rate residuals "
+                "and curvature with declared weights. Fixed baseline proportional exit fractions.",
+            }
         for case in CASES:
             item = deepcopy(base)
             item["id"] = asset if case == "primary" else f"{asset}-{case}"
             if case == "inflow":
                 item.update(mode="inflow", exit_policy="error")
+                item.pop("annualisation", None)
+            elif case == "linear-stock":
+                item.update(mode="stock")
+                item.pop("annualisation", None)
+            elif case in ("inflow-penalty-low", "inflow-penalty-high"):
+                if annualisation != "joint":
+                    continue
+                item["annualisation"]["inflow_weight"] = 1 if case == "inflow-penalty-low" else 100
             elif case in ("short-life", "long-life"):
                 factor = 0.75 if case == "short-life" else 1.25
                 item["lifetime"].pop("source", None)
@@ -226,6 +248,8 @@ def plot_results(output, report):
             rows = subset.loc[
                 subset.index.str.startswith(PREFIX + ident + "|Service Share|Vintage|")
             ]
+            if rows.empty:
+                continue
             cohorts = np.array([int(v.split("|")[-1]) for v in rows.index])
             for year in range(
                 report.assumptions["reference_year"], report.assumptions["end_year"] + 1
@@ -249,6 +273,8 @@ def plot_results(output, report):
     for asset, ax in zip(FILES, axes.flat, strict=True):
         for case in CASES:
             data = ages.loc[ages.asset.eq(asset) & ages.case.eq(case)]
+            if data.empty:
+                continue
             ax.plot(data.year, data.mean_age, label=case)
         ax.set(title=asset, xlabel="Service year", ylabel="Mean serving-stock age (years)")
         ax.legend(fontsize=7)
@@ -257,16 +283,50 @@ def plot_results(output, report):
     plt.close(fig)
 
 
+def record_rejected_sensitivities(source, config_path):
+    """Keep physical service-limit failures visible without exporting invalid profiles.
+
+    Primary cases, solver failures and other data errors always abort. Only
+    optional sensitivity cases exceeding the declared service bound are excluded.
+    """
+    frame, config = read_frame(source), load_stock_config(config_path)
+    rejected = []
+    for asset in config["assets"]:
+        try:
+            _asset_result(frame, asset, config["reference_year"], config["end_year"])
+        except DataValidationError as exc:
+            if asset["id"] in FILES or "service exceeds the declared per-stock bound" not in str(
+                exc
+            ):
+                raise
+            rejected.append({"asset": asset["id"], "reason": str(exc), "configuration": asset})
+    raw = yaml.safe_load(config_path.read_text())
+    ids = {item["asset"] for item in rejected}
+    raw["assets"] = [a for a in raw["assets"] if a["id"] not in ids]
+    config_path.write_text(yaml.safe_dump(raw, sort_keys=False))
+    ledger = {
+        "attempted_cases": len(config["assets"]),
+        "accepted_cases": len(raw["assets"]),
+        "rejected": rejected,
+    }
+    (config_path.parent / "rejected-sensitivities.json").write_text(
+        json.dumps(ledger, indent=2) + "\n"
+    )
+    return ledger
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--end-year", type=int, default=2050)
+    parser.add_argument("--annualisation", choices=("joint", "stock"), default="joint")
     args = parser.parse_args()
     if args.output_dir.exists() and any(args.output_dir.iterdir()):
         raise ValueError("Choose an empty local output directory.")
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    source, config = make_config(args.archive, args.output_dir, args.end_year)
+    source, config = make_config(args.archive, args.output_dir, args.end_year, args.annualisation)
+    record_rejected_sensitivities(source, config)
     report = prepare_stock_vintages(source, args.output_dir, config)
     plot_results(args.output_dir, report)
     print(

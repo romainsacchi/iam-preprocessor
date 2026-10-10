@@ -93,18 +93,25 @@ def _observations(initial, reference_year):
 
 
 def _asset_result(frame, asset, reference_year, end_year):
+    requested_end = end_year
+    stock_series = _series(frame, asset["region"], asset["stock"])
+    flow_series = _series(frame, asset["region"], asset["inflow"])
+    if asset["mode"] == "joint":
+        from .stock_annualisation import joint_horizon
+
+        end_year = joint_horizon(stock_series, reference_year, end_year, asset["inflow_timing"])
     observed, first = _observations(asset["initial"], reference_year)
     years = np.arange(first, end_year + 1)
     service_years = np.arange(reference_year, end_year + 1)
     ref = reference_year - first
-    stock_targets = interpolate(_series(frame, asset["region"], asset["stock"]), service_years)
+    stock_targets = interpolate(stock_series, service_years)
     if stock_targets[0] <= 0:
         raise DataValidationError("Initial stock must be positive to infer its composition.")
     # The reference stock is an initial condition, not the reference year's inflow.
     flows = np.r_[
         0.0,
         annual_inflows(
-            _series(frame, asset["region"], asset["inflow"]),
+            flow_series,
             service_years[1:],
             asset["inflow_timing"],
         ),
@@ -143,10 +150,27 @@ def _asset_result(frame, asset, reference_year, end_year):
         reference_year=reference_year,
         initial=initial,
         survival=sf,
-        targets=stock_targets if asset["mode"] == "stock" else flows,
-        mode=asset["mode"],
-        exit_policy=asset["exit_policy"],
+        targets=flows if asset["mode"] == "inflow" else stock_targets,
+        mode="inflow" if asset["mode"] == "inflow" else "stock",
+        exit_policy="proportional" if asset["mode"] == "joint" else asset["exit_policy"],
     )
+    joint_diagnostics = None
+    if asset["mode"] == "joint":
+        from .stock_annualisation import reconstruct_joint
+
+        result, joint_diagnostics = reconstruct_joint(
+            baseline=result,
+            survival=sf,
+            stock_series=stock_series,
+            flow_series=flow_series,
+            timing=asset["inflow_timing"],
+            reference_inflows=flows,
+            exit_policy=asset["exit_policy"],
+            options={
+                k: asset["annualisation"][k]
+                for k in ("inflow_constraints", "reference_weight", "inflow_weight")
+            },
+        )
     ageing = np.maximum(0, service_years[:, None] - np.maximum(reference_year, years)[None, :])
     service = result.stock * factors[None, :] * np.exp(-weighting["annual_age_decay"] * ageing)
     for i, year in enumerate(service_years[1:], start=1):
@@ -176,12 +200,45 @@ def _asset_result(frame, asset, reference_year, end_year):
                 out=np.zeros_like(service),
                 where=result.stock > 0,
             )
-            if (service_per_stock > weighting["maximum_service_per_stock"] * (1 + 1e-10)).any():
+            invalid = (service_per_stock > weighting["maximum_service_per_stock"] * (1 + 1e-10)) & (
+                service_years[:, None] <= requested_end
+            )
+            if invalid.any():
+                t, c = np.argwhere(invalid)[0]
                 raise DataValidationError(
-                    "Modelled cohort service exceeds the declared per-stock bound."
+                    "Modelled cohort service exceeds the declared per-stock bound: "
+                    f"year={service_years[t]}, cohort={years[c]}, "
+                    f"value={service_per_stock[t, c]:.8g}, "
+                    f"bound={weighting['maximum_service_per_stock']:.8g}."
                 )
     implied_exit = np.r_[np.nan, stock_targets[:-1] + flows[1:] - stock_targets[1:]]
-    return result, stock_shares, service_shares, stock_targets, flows, implied_exit, service_target
+    if end_year != requested_end:
+        # Full reporting windows are fitted before trimming public coverage. Do not
+        # silently interpret a partial window as a smaller observed period total.
+        count, cohort_count = requested_end - reference_year + 1, requested_end - first + 1
+        result.years = result.years[:count]
+        result.cohorts = result.cohorts[:cohort_count]
+        result.stock = result.stock[:count, :cohort_count]
+        for name in ("inflow", "natural_exit", "additional_exit", "balance"):
+            setattr(result, name, getattr(result, name)[:count])
+        stock_shares, service_shares = (
+            array[:count, :cohort_count] for array in (stock_shares, service_shares)
+        )
+        stock_targets, flows, implied_exit = (
+            array[:count] for array in (stock_targets, flows, implied_exit)
+        )
+        if service_target is not None:
+            service_target = service_target[:count]
+    return (
+        result,
+        stock_shares,
+        service_shares,
+        stock_targets,
+        flows,
+        implied_exit,
+        service_target,
+        joint_diagnostics,
+    )
 
 
 def _annualize_originals(frame, added_years):
@@ -219,9 +276,16 @@ def enrich_stock_vintages(frame, config):
     rows, diagnostics = [], []
     for asset in config["assets"]:
         try:
-            result, shares, service_shares, targets, flows, implied, service_target = _asset_result(
-                frame, asset, ref, end
-            )
+            (
+                result,
+                shares,
+                service_shares,
+                targets,
+                flows,
+                implied,
+                service_target,
+                joint_diagnostics,
+            ) = _asset_result(frame, asset, ref, end)
         except DataValidationError as exc:
             raise DataValidationError(f"{asset['id']}/{asset['region']}: {exc}") from exc
         prefix = PREFIX + asset["id"] + "|"
@@ -287,6 +351,11 @@ def enrich_stock_vintages(frame, config):
         }
         if asset["initial"]["kind"] == "observed_shares":
             diagnostic["observation_sha256"] = sha256_file(asset["initial"]["file"])
+        if joint_diagnostics is not None:
+            diagnostic["annualisation"] = joint_diagnostics
+            diagnostic["stock_residual_basis"] = (
+                "deviation from linear interpolation; source-anchor residuals reported separately"
+            )
         diagnostics.append(diagnostic)
     annual = _annualize_originals(frame, range(ref, end + 1))
     enriched = pd.concat([annual, pd.DataFrame(rows)], ignore_index=True)
@@ -349,6 +418,7 @@ def prepare_stock_vintages(
                     "stock_vintages.py",
                     "stock_model.py",
                     "stock_config.py",
+                    "stock_annualisation.py",
                     "io.py",
                     "filtering.py",
                 )
@@ -368,7 +438,15 @@ def prepare_stock_vintages(
             report.warnings.append(
                 f"{d['asset']}/{d['region']}: stock and annualised inflow imply "
                 f"negative exits in {d['negative_implied_exit_years']}; "
-                "both constraints were not imposed simultaneously."
+                "this diagnostic uses independent linear/flat annualisation. "
+                "For joint mode, see the separate constraint reconciliation."
+            )
+        if "annualisation" in d and not d["annualisation"]["exact_inflow_constraints_feasible"]:
+            report.warnings.append(
+                f"{d['asset']}/{d['region']}: reported inflows conflict with stock anchors "
+                "under the configured survival/exit assumptions. Stock anchors retained; "
+                "a configured rate-residual penalty balances inflow agreement and smoothness. "
+                "Every source-constraint discrepancy is explicitly reported."
             )
         if d["total_additional_exits"] > 0:
             report.warnings.append(

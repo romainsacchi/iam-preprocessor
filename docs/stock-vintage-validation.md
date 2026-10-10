@@ -26,13 +26,20 @@ support parameters renamed as means. Power's technical-life reinterpretation
 is similarly an assumption. Existing initial composition can make these useful
 conditional projections without establishing empirical validity of the priors.
 
-Each of the four IAM groups has eight cases: primary stock-driven,
+The initial implementation provided eight cases per IAM group: primary stock-driven,
 reported-inflow-driven, 25% shorter lifetime, 25% longer lifetime, equal service,
 3% annual age decay of service, stationary initial age composition, and half-year
 exposure of new cohorts. Equal service duplicates the vehicle primary by design;
 it isolates the difference between observed-output and capacity weighting for
 power. This is a sensitivity set, not a probability distribution or confidence
 interval. Shape and selective-retirement uncertainty remain future extensions.
+
+The [joint annualisation revision](joint-stock-annualisation.md) makes the primary
+case a constrained annual fit, retains the linear-stock reconstruction as an
+additional comparator, and adds inflow-penalty sensitivities of 1 and 100 around
+the primary value 10. Of 44 proposed cases, 43 pass; CCGT age-decay is explicitly
+rejected for exceeding the physical service limit. It is absent from exported
+profiles and documented in `rejected-sensitivities.json`.
 
 ## Three release requirements
 
@@ -67,8 +74,12 @@ lifetime, service-exposure, utilization and initial-state sensitivities.
 Negative implied exits for BEV/PV diagnose disagreement in the independently
 annualized input constraints. They do not prove REMIND itself is inconsistent.
 Truck/CCGT totals can be feasible while still disagreeing with a chosen survival
-or additional-exit model. A constrained joint fit remains distinct future work;
-this version exposes both endpoint reconstructions and their residuals.
+or additional-exit model. Joint mode now preserves native stock anchors, checks
+inflow-constraint feasibility and smooths annual additions. Incompatible inflows
+are rejected or receive an explicitly configured penalty; all residuals remain
+visible. Independent serialized-output checks compare its constraints with source
+values and complete reporting windows, including internal years beyond export
+coverage. Analytical tests cover five/ten-year windows and legacy compatibility.
 
 ### 3. Actual producer–consumer evidence
 
@@ -132,8 +143,9 @@ irregular-window test checks arithmetic only. Before extending the actual power
 example, review the five-to-ten-year transition and the reporter's window
 mapping; a centred reported rate can mix native investment blocks.
 
-Highest priorities with no new team data are: joint constrained annualization at
-published stock anchors; comparing selective exit assumptions; historical
+Joint annualization at published stock anchors is implemented, conditional on
+the selected survival and fixed exit fractions. Remaining priorities are
+comparing selective exit assumptions; historical
 backtesting with already available public observations; age-specific vehicle
 use and plant dispatch/degradation; within-year exposure/retirement integration;
 and a broader geography/technology crosswalk. Exact-run fidelity, empirical

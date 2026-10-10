@@ -86,7 +86,7 @@ def load_stock_config(path):
                 "exit_policy",
                 "service_weighting",
             ),
-            ("service",),
+            ("service", "annualisation"),
         )
         if not isinstance(asset["id"], str) or not re.fullmatch(
             r"[a-z0-9][a-z0-9_-]*", asset["id"]
@@ -108,8 +108,20 @@ def load_stock_config(path):
         units_by_id[asset["id"]] = units
         if asset["inflow"]["unit"] not in {asset["stock"]["unit"], asset["stock"]["unit"] + "/yr"}:
             raise DataValidationError("Stock and inflow units must use the same quantity scale.")
-        if asset["mode"] not in ("stock", "inflow"):
-            raise DataValidationError("mode must be stock or inflow.")
+        if asset["mode"] not in ("stock", "inflow", "joint"):
+            raise DataValidationError("mode must be stock, inflow or joint.")
+        if asset["mode"] == "joint":
+            annual = asset.get("annualisation")
+            fields(
+                annual, ("inflow_constraints", "reference_weight", "inflow_weight", "provenance")
+            )
+            if annual["inflow_constraints"] not in ("strict", "penalized"):
+                raise DataValidationError("Choose strict or penalized inflow constraints.")
+            positive(annual["reference_weight"], "annualisation reference_weight")
+            positive(annual["inflow_weight"], "annualisation inflow_weight")
+            nonempty(annual["provenance"], "annualisation provenance")
+        elif "annualisation" in asset:
+            raise DataValidationError("annualisation configuration requires joint mode.")
         if asset["exit_policy"] not in ("error", "proportional"):
             raise DataValidationError("exit_policy must be error or proportional.")
         if asset["mode"] == "inflow" and asset["exit_policy"] != "error":
