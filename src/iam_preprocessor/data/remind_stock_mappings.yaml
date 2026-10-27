@@ -309,3 +309,113 @@ assets:
     service_life: 15
     capacity_basis: vehicles in use reported by REMIND
     aliases: []
+  hydro:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|+|Hydro
+    inflow_variable: New Cap|Electricity|+|Hydro
+    lifetime_variable: Tech|Electricity|Hydro|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: [hydropower]
+  ccgt-ccs:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Gas|CC|+|w/ CC
+    inflow_variable: New Cap|Electricity|Gas|CC|+|w/ CC
+    lifetime_variable: Tech|Electricity|Gas|Combined Cycle w/ CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: [gas-combined-cycle-with-ccs]
+  gas-chp:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Gas|CHP
+    inflow_variable: New Cap|Electricity|Gas|CHP
+    lifetime_variable: Tech|Electricity|Gas|Combined Heat and Power w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  hydrogen-power:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|+|Hydrogen
+    inflow_variable: New Cap|Electricity|+|Hydrogen
+    lifetime_variable: Tech|Electricity|Hydrogen|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  oil-power:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Oil|w/o CC
+    inflow_variable: New Cap|Electricity|Oil|w/o CC
+    lifetime_variable: Tech|Electricity|Oil|DOT|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  coal-igcc-ccs:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Coal|IGCC|+|w/ CC
+    inflow_variable: New Cap|Electricity|Coal|IGCC|+|w/ CC
+    lifetime_variable: Tech|Electricity|Coal|Gasification Combined Cycle w/ CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  coal-igcc:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Coal|IGCC|+|w/o CC
+    inflow_variable: New Cap|Electricity|Coal|IGCC|+|w/o CC
+    lifetime_variable: Tech|Electricity|Coal|Gasification Combined Cycle w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  coal-chp:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Coal|CHP
+    inflow_variable: New Cap|Electricity|Coal|CHP
+    lifetime_variable: Tech|Electricity|Coal|Combined Heat and Power w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  biomass-chp:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Biomass|CHP
+    inflow_variable: New Cap|Electricity|Biomass|CHP
+    lifetime_variable: Tech|Electricity|Biomass|Combined Heat and Power w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  biomass-ccs:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Biomass|w/ CC
+    inflow_variable: New Cap|Electricity|Biomass|w/ CC
+    lifetime_variable: Tech|Electricity|Biomass|Gasification Combined Cycle w/ CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  battery-pv:
+    sector: storage
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Storage|Battery|For PV
+    inflow_variable: New Cap|Electricity|Storage|Battery|For PV
+    lifetime_variable: Tech|Electricity|Storage|Battery|For PV|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: battery power capacity coupled to solar PV reported by REMIND
+    aliases: []

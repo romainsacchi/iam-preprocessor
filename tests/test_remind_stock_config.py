@@ -70,6 +70,41 @@ def frame_with_transport_children(*, mismatch=False):
     return pd.concat([result, pd.DataFrame(rows)], ignore_index=True)
 
 
+def with_capacity_asset(source, *, asset="battery", zero=False):
+    variables = {
+        "battery": (
+            "Cap|Electricity|Storage|Battery|For PV",
+            "New Cap|Electricity|Storage|Battery|For PV",
+            "Tech|Electricity|Storage|Battery|For PV|Lifetime",
+        ),
+        "hydro": (
+            "Cap|Electricity|+|Hydro",
+            "New Cap|Electricity|+|Hydro",
+            "Tech|Electricity|Hydro|Lifetime",
+        ),
+    }
+    stock, inflow, lifetime = variables[asset]
+    values = (0, 0) if zero else (1, 2)
+    rows = []
+    for variable, unit, pair in (
+        (stock, "GW", values),
+        (inflow, "GW/yr", (values[0] / 10, values[1] / 10)),
+        (lifetime, "years", (20, 25)),
+    ):
+        rows.append(
+            {
+                "Model": "REMIND",
+                "Scenario": "SSP2-EU21-NPi2025",
+                "Region": "DEU",
+                "Variable": variable,
+                "Unit": unit,
+                "2005": pair[0],
+                "2010": pair[1],
+            }
+        )
+    return pd.concat([source, pd.DataFrame(rows)], ignore_index=True)
+
+
 def test_builds_individual_region_power_and_transport_assets(tmp_path):
     config, skipped = build_remind_stock_config(frame(), regions=["DEU", "FRA"])
     assert config["reference_year"] == 2005
@@ -170,3 +205,27 @@ def test_transport_hierarchy_mismatch_uses_aggregate_fallback():
     )
     assert {asset["id"] for asset in config["assets"]} == {"passenger-ldv-4w"}
     assert "parent-child hierarchy mismatch" in {item["reason"] for item in skipped}
+
+
+def test_builds_exact_variable_conversion_mapping():
+    config, _ = build_remind_stock_config(
+        with_capacity_asset(frame(), asset="battery"),
+        regions=["DEU"],
+        include_power=False,
+        include_transport=False,
+    )
+    assert [asset["id"] for asset in config["assets"]] == ["battery-pv"]
+    assert config["assets"][0]["lifetime"]["source"]["variable"] == (
+        "Tech|Electricity|Storage|Battery|For PV|Lifetime"
+    )
+
+
+def test_zero_only_capacity_mapping_is_skipped():
+    config, skipped = build_remind_stock_config(
+        with_capacity_asset(frame(), asset="hydro", zero=True),
+        regions=["DEU"],
+        include_transport=False,
+        include_conversion=False,
+    )
+    assert {asset["id"] for asset in config["assets"]} == {"pv"}
+    assert {item["reason"] for item in skipped if item["asset"] == "hydro"} == {"zero only"}

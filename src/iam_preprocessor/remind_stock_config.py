@@ -60,6 +60,42 @@ def _selectors_available(frame, region, selectors):
     )
 
 
+def _capacity_selectors(mapping):
+    if "stock_variable" in mapping:
+        return (
+            {"variable": mapping["stock_variable"], "unit": mapping["stock_unit"]},
+            {"variable": mapping["inflow_variable"], "unit": mapping["inflow_unit"]},
+            {"variable": mapping["lifetime_variable"], "unit": "years"},
+        )
+    return (
+        {
+            "variable": f"Cap|Electricity|{mapping['stock_suffix']}",
+            "unit": mapping["stock_unit"],
+        },
+        {
+            "variable": f"New Cap|Electricity|{mapping['inflow_suffix']}",
+            "unit": mapping["inflow_unit"],
+        },
+        {
+            "variable": f"Tech|Electricity|{mapping['lifetime_suffix']}|Lifetime",
+            "unit": "years",
+        },
+    )
+
+
+def _zero_only(rows, labels, end_year):
+    selected = [label for label in labels if int(label) <= end_year]
+    return all(
+        np.allclose(
+            pd.to_numeric(row[selected], errors="raise").to_numpy(float),
+            0,
+            rtol=0,
+            atol=1e-12,
+        )
+        for row in rows
+    )
+
+
 def _children_match_parent(frame, region, parent, children, labels):
     """Return whether child Stock/Sales series partition their reporting parent."""
     for selector_index in (0, 1):
@@ -200,6 +236,7 @@ def build_remind_stock_config(
     end_year=None,
     include_power=True,
     include_transport=True,
+    include_conversion=True,
     reconciliation="strict",
 ):
     """Return a validated-shape configuration for individual REMIND regions.
@@ -229,72 +266,67 @@ def build_remind_stock_config(
         raise DataValidationError(
             f"Regions are absent from the scenario: {sorted(missing_regions)}"
         )
-    if not include_power and not include_transport:
-        raise DataValidationError("Select at least one power or transport asset family.")
+    if not any((include_power, include_transport, include_conversion)):
+        raise DataValidationError("Select at least one stock asset family.")
     if reconciliation not in {"strict", "joint"}:
         raise DataValidationError("reconciliation must be strict or joint.")
 
     assets = []
     skipped = []
     mappings, _ = load_remind_asset_registry()
-    power_assets = {
-        key: value for key, value in mappings["assets"].items() if value["sector"] == "power"
+    capacity_assets = {
+        key: value
+        for key, value in mappings["assets"].items()
+        if value["sector"] != "transport"
+        and (
+            (include_power and value["sector"] == "power")
+            or (include_conversion and value["sector"] != "power")
+        )
     }
     transport_assets = {
         key: value for key, value in mappings["assets"].items() if value["sector"] == "transport"
     }
     for region in selected_regions:
-        if include_power:
-            for asset_id, mapping in power_assets.items():
-                stock = {
-                    "variable": f"Cap|Electricity|{mapping['stock_suffix']}",
-                    "unit": mapping["stock_unit"],
-                }
-                inflow = {
-                    "variable": f"New Cap|Electricity|{mapping['inflow_suffix']}",
-                    "unit": mapping["inflow_unit"],
-                }
-                source = {
-                    "variable": f"Tech|Electricity|{mapping['lifetime_suffix']}|Lifetime",
-                    "unit": "years",
-                }
-                rows = (
-                    _row(frame, region, stock["variable"], stock["unit"]),
-                    _row(frame, region, inflow["variable"], inflow["unit"]),
-                    _row(frame, region, source["variable"], source["unit"]),
+        for asset_id, mapping in capacity_assets.items():
+            stock, inflow, source = _capacity_selectors(mapping)
+            rows = (
+                _row(frame, region, stock["variable"], stock["unit"]),
+                _row(frame, region, inflow["variable"], inflow["unit"]),
+                _row(frame, region, source["variable"], source["unit"]),
+            )
+            if any(row is None for row in rows):
+                skipped.append({"asset": asset_id, "region": region, "reason": "missing selector"})
+                continue
+            if _zero_only(rows[:2], labels, end_year):
+                skipped.append({"asset": asset_id, "region": region, "reason": "zero only"})
+                continue
+            maximum = _value_at(rows[2], anchors[0], labels)
+            maximum_age = math.ceil(maximum)
+            if maximum_age > 150:
+                raise DataValidationError(
+                    f"{asset_id}/{region}: opening maximum lifetime exceeds 150 years."
                 )
-                if any(row is None for row in rows):
-                    skipped.append(
-                        {"asset": asset_id, "region": region, "reason": "missing selector"}
-                    )
-                    continue
-                maximum = _value_at(rows[2], anchors[0], labels)
-                maximum_age = math.ceil(maximum)
-                if maximum_age > 150:
-                    raise DataValidationError(
-                        f"{asset_id}/{region}: opening maximum lifetime exceeds 150 years."
-                    )
-                lifetime = {
-                    "distribution": "remind",
-                    "initial_maximum": maximum,
-                    "source": source,
-                    "interpretation": "REMIND energy-conversion maximum lifetime tau; survival "
-                    "is max(0, 1 - (age/tau)^4) and mean lifetime is 4*tau/5.",
-                    "provenance": "Technical note: Lifetimes in REMIND (2026-03-23).",
-                }
-                assets.append(
-                    _common_asset(
-                        asset_id,
-                        region,
-                        stock,
-                        inflow,
-                        lifetime,
-                        maximum_age,
-                        anchors[0],
-                        reference_year,
-                        reconciliation,
-                    )
+            lifetime = {
+                "distribution": "remind",
+                "initial_maximum": maximum,
+                "source": source,
+                "interpretation": "REMIND energy-conversion maximum lifetime tau; survival "
+                "is max(0, 1 - (age/tau)^4) and mean lifetime is 4*tau/5.",
+                "provenance": "Technical note: Lifetimes in REMIND (2026-03-23).",
+            }
+            assets.append(
+                _common_asset(
+                    asset_id,
+                    region,
+                    stock,
+                    inflow,
+                    lifetime,
+                    maximum_age,
+                    anchors[0],
+                    reference_year,
+                    reconciliation,
                 )
+            )
         if include_transport:
             selected_transport, transport_skipped = _select_transport_assets(
                 frame, region, transport_assets, labels
@@ -349,6 +381,7 @@ def write_remind_stock_config(
     end_year=None,
     include_power=True,
     include_transport=True,
+    include_conversion=True,
     reconciliation="strict",
     overwrite=False,
 ):
@@ -365,6 +398,7 @@ def write_remind_stock_config(
         end_year=end_year,
         include_power=include_power,
         include_transport=include_transport,
+        include_conversion=include_conversion,
         reconciliation=reconciliation,
     )
     destination.parent.mkdir(parents=True, exist_ok=True)

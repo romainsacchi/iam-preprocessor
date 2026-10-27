@@ -148,6 +148,7 @@ def remind_stock_config_command(
     end_year: int | None = typer.Option(None, "--end-year"),
     power: bool = typer.Option(True, "--power/--no-power"),
     transport: bool = typer.Option(True, "--transport/--no-transport"),
+    conversion: bool = typer.Option(True, "--conversion/--no-conversion"),
     reconciliation: str = typer.Option("strict", "--reconciliation"),
     overwrite: bool = typer.Option(False, "--overwrite"),
 ) -> None:
@@ -160,6 +161,7 @@ def remind_stock_config_command(
         end_year=end_year,
         include_power=power,
         include_transport=transport,
+        include_conversion=conversion,
         reconciliation=reconciliation,
         overwrite=overwrite,
     )
