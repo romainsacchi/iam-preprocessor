@@ -1,0 +1,137 @@
+schema_version: 1
+model: REMIND
+assets:
+  pv:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: Solar|+|PV
+    inflow_suffix: Solar|+|PV
+    lifetime_suffix: Solar|PV
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: [solar-pv]
+  ccgt:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: Gas|CC|+|w/o CC
+    inflow_suffix: Gas|CC|+|w/o CC
+    lifetime_suffix: Gas|Combined Cycle w/o CC
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: [gas-combined-cycle-without-ccs]
+  wind-onshore:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: Wind|+|Onshore
+    inflow_suffix: Wind|+|Onshore
+    lifetime_suffix: Wind|Onshore
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  wind-offshore:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: Wind|+|Offshore
+    inflow_suffix: Wind|+|Offshore
+    lifetime_suffix: Wind|Offshore
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  nuclear:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: +|Nuclear
+    inflow_suffix: +|Nuclear
+    lifetime_suffix: Nuclear
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  gas-turbine:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: Gas|GT
+    inflow_suffix: Gas|GT
+    lifetime_suffix: Gas|Gas Turbine
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  geothermal:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: +|Geothermal
+    inflow_suffix: +|Geothermal
+    lifetime_suffix: Geothermal
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  csp:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: Solar|+|CSP
+    inflow_suffix: Solar|+|CSP
+    lifetime_suffix: Solar|CSP
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: [concentrating-solar-power]
+  passenger-ldv-4w:
+    sector: transport
+    hierarchy: leaf
+    variable_suffix: Pass|Road|LDV|Four Wheelers
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 20
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: [cars]
+  passenger-ldv-2w:
+    sector: transport
+    hierarchy: leaf
+    variable_suffix: Pass|Road|LDV|Two Wheelers
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  passenger-ldv-3w:
+    sector: transport
+    hierarchy: leaf
+    variable_suffix: Pass|Road|LDV|Three Wheelers
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 8
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  buses:
+    sector: transport
+    hierarchy: leaf
+    variable_suffix: Pass|Road|Bus
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  light-trucks:
+    sector: transport
+    hierarchy: leaf
+    variable_suffix: Freight|Road|Light
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  heavy-trucks:
+    sector: transport
+    hierarchy: leaf
+    variable_suffix: Freight|Road|Heavy
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []

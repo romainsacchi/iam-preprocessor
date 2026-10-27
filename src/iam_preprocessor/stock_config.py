@@ -59,7 +59,11 @@ def load_stock_config(path):
         config = yaml.safe_load(source.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
         raise DataValidationError(f"Cannot read stock configuration: {source}") from exc
-    fields(config, ("schema_version", "model", "scenario", "reference_year", "end_year", "assets"))
+    fields(
+        config,
+        ("schema_version", "model", "scenario", "reference_year", "end_year", "assets"),
+        ("registries",),
+    )
     if type(config["schema_version"]) is not int or config["schema_version"] != 1:
         raise DataValidationError("Only stock configuration schema_version 1 is supported.")
     for key in ("model", "scenario"):
@@ -69,6 +73,13 @@ def load_stock_config(path):
         raise DataValidationError("Require 2005 <= reference_year < end_year <= 2100 for premise.")
     if not isinstance(config["assets"], list) or not config["assets"]:
         raise DataValidationError("Configure at least one stock asset.")
+    if "registries" in config:
+        from .stock_registry import registry_provenance
+
+        if config["registries"] != registry_provenance():
+            raise DataValidationError(
+                "Configuration registry checksums do not match this software version."
+            )
     identities = set()
     units_by_id = {}
     for asset in config["assets"]:

@@ -204,6 +204,7 @@ def write_vintage_package(
                 "path": str(Path(config_path).resolve()),
                 "sha256": sha256_file(config_path),
             },
+            "registries": config.get("registries", {}),
             "resources": resources,
         }
         _json(temporary / "datapackage.json", manifest)

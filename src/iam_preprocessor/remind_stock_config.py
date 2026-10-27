@@ -11,56 +11,9 @@ import yaml
 
 from .exceptions import DataValidationError, IamPreprocessorError
 from .io import read_frame, validate_frame, year_columns
+from .stock_registry import load_remind_asset_registry, registry_provenance
 
 AGGREGATE_REGIONS = {"World", "EUR", "EU27", "NEU"}
-
-# These are exact leaf technologies. Parent and child capacities are deliberately
-# not mixed, which avoids double-counting nested REMIND reporting categories.
-POWER_ASSETS = {
-    "pv": (
-        "Solar|+|PV",
-        "Solar|PV",
-    ),
-    "ccgt": (
-        "Gas|CC|+|w/o CC",
-        "Gas|Combined Cycle w/o CC",
-    ),
-    "wind-onshore": (
-        "Wind|+|Onshore",
-        "Wind|Onshore",
-    ),
-    "wind-offshore": (
-        "Wind|+|Offshore",
-        "Wind|Offshore",
-    ),
-    "nuclear": (
-        "+|Nuclear",
-        "Nuclear",
-    ),
-    "gas-turbine": (
-        "Gas|GT",
-        "Gas|Gas Turbine",
-    ),
-    "geothermal": (
-        "+|Geothermal",
-        "Geothermal",
-    ),
-    "csp": (
-        "Solar|+|CSP",
-        "Solar|CSP",
-    ),
-}
-
-# REMIND transportPol5cen ``serviceLife`` values supplied for this work. The
-# interest-rate values belong to cost annualisation and are not survival inputs.
-TRANSPORT_ASSETS = {
-    "passenger-ldv-4w": ("Pass|Road|LDV|Four Wheelers", 20),
-    "passenger-ldv-2w": ("Pass|Road|LDV|Two Wheelers", 15),
-    "passenger-ldv-3w": ("Pass|Road|LDV|Three Wheelers", 8),
-    "buses": ("Pass|Road|Bus", 15),
-    "light-trucks": ("Freight|Road|Light", 15),
-    "heavy-trucks": ("Freight|Road|Heavy", 15),
-}
 
 
 def _identity(frame):
@@ -155,16 +108,26 @@ def build_remind_stock_config(
 
     assets = []
     skipped = []
+    mappings, _ = load_remind_asset_registry()
+    power_assets = {
+        key: value for key, value in mappings["assets"].items() if value["sector"] == "power"
+    }
+    transport_assets = {
+        key: value for key, value in mappings["assets"].items() if value["sector"] == "transport"
+    }
     for region in selected_regions:
         if include_power:
-            for asset_id, (capacity_suffix, lifetime_suffix) in POWER_ASSETS.items():
-                stock = {"variable": f"Cap|Electricity|{capacity_suffix}", "unit": "GW"}
+            for asset_id, mapping in power_assets.items():
+                stock = {
+                    "variable": f"Cap|Electricity|{mapping['stock_suffix']}",
+                    "unit": mapping["stock_unit"],
+                }
                 inflow = {
-                    "variable": f"New Cap|Electricity|{capacity_suffix}",
-                    "unit": "GW/yr",
+                    "variable": f"New Cap|Electricity|{mapping['inflow_suffix']}",
+                    "unit": mapping["inflow_unit"],
                 }
                 source = {
-                    "variable": f"Tech|Electricity|{lifetime_suffix}|Lifetime",
+                    "variable": f"Tech|Electricity|{mapping['lifetime_suffix']}|Lifetime",
                     "unit": "years",
                 }
                 rows = (
@@ -193,14 +156,16 @@ def build_remind_stock_config(
                 }
                 assets.append(_common_asset(asset_id, region, stock, inflow, lifetime, maximum_age))
         if include_transport:
-            for asset_id, (variable_suffix, service_life) in TRANSPORT_ASSETS.items():
+            for asset_id, mapping in transport_assets.items():
+                variable_suffix = mapping["variable_suffix"]
+                service_life = mapping["service_life"]
                 stock = {
                     "variable": f"Stock|Transport|{variable_suffix}",
-                    "unit": "million veh",
+                    "unit": mapping["stock_unit"],
                 }
                 inflow = {
                     "variable": f"Sales|Transport|{variable_suffix}",
-                    "unit": "million veh",
+                    "unit": mapping["inflow_unit"],
                 }
                 if any(
                     _row(frame, region, selector["variable"], selector["unit"]) is None
@@ -231,6 +196,7 @@ def build_remind_stock_config(
         "scenario": scenario,
         "reference_year": reference_year,
         "end_year": end_year,
+        "registries": registry_provenance(),
         "assets": assets,
     }
     return config, skipped
