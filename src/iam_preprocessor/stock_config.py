@@ -62,7 +62,7 @@ def load_stock_config(path):
     fields(
         config,
         ("schema_version", "model", "scenario", "reference_year", "end_year", "assets"),
-        ("registries",),
+        ("registries", "evidence_manifest"),
     )
     if type(config["schema_version"]) is not int or config["schema_version"] != 1:
         raise DataValidationError("Only stock configuration schema_version 1 is supported.")
@@ -80,6 +80,12 @@ def load_stock_config(path):
             raise DataValidationError(
                 "Configuration registry checksums do not match this software version."
             )
+    if "evidence_manifest" in config:
+        nonempty(config["evidence_manifest"], "evidence_manifest")
+        config["evidence_manifest"] = str((source.parent / config["evidence_manifest"]).resolve())
+        from .stock_evidence import load_evidence_manifest
+
+        load_evidence_manifest(config["evidence_manifest"])
     identities = set()
     units_by_id = {}
     for asset in config["assets"]:

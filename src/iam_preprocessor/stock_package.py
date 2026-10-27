@@ -13,6 +13,7 @@ import pandas as pd
 
 from .exceptions import DataValidationError, IamPreprocessorError
 from .io import sha256_file
+from .stock_evidence import evidence_descriptor
 
 SCHEMA_VERSION = 2
 KEY = ["model", "scenario", "region", "asset", "year", "cohort_year", "metric"]
@@ -205,6 +206,7 @@ def write_vintage_package(
                 "sha256": sha256_file(config_path),
             },
             "registries": config.get("registries", {}),
+            "evidence": evidence_descriptor(config.get("evidence_manifest")),
             "resources": resources,
         }
         _json(temporary / "datapackage.json", manifest)
