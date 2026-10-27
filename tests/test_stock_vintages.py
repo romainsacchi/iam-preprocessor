@@ -234,6 +234,26 @@ def test_filter_encrypt_and_cli_roundtrip(inputs, tmp_path):
         prepare_stock_vintages(source, tmp_path / "out", config)
 
 
+def test_package_only_skips_wide_and_duplicate_csv_outputs(inputs, tmp_path):
+    _, _, config, source = inputs
+    output = tmp_path / "package-only"
+    report = prepare_stock_vintages(source, output, config, package_only=True)
+    package = output / f"{source.stem}_stock_vintages_v2"
+    assert report.output_path == str((package / "vintages.parquet").resolve())
+    assert report.assumptions["v1_compatibility_output"] is False
+    assert not (output / f"{source.stem}_stock_vintages.csv").exists()
+    assert not (package / "vintages.csv.gz").exists()
+    assert report.output_rows == len(pd.read_parquet(package / "vintages.parquet"))
+    with pytest.raises(IamPreprocessorError, match="cannot be filtered"):
+        prepare_stock_vintages(
+            source,
+            tmp_path / "invalid-package-only",
+            config,
+            package_only=True,
+            filter_output=True,
+        )
+
+
 @pytest.mark.parametrize("problem", ["scenario", "unit", "missing", "duplicate", "enriched", "nan"])
 def test_rejects_ambiguous_or_invalid_inputs(inputs, problem):
     frame, _, path, _ = inputs

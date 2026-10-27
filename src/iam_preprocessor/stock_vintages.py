@@ -321,7 +321,7 @@ def _annualize_originals(frame, added_years):
     return pd.concat([frame, pd.DataFrame(additions, index=frame.index)], axis=1)
 
 
-def enrich_stock_vintages(frame, config, *, return_v2=False):
+def enrich_stock_vintages(frame, config, *, return_v2=False, include_v1=True):
     """Return an enriched table and diagnostics using a validated stock configuration.
 
     One model/scenario per file is required because premise discards those two
@@ -382,6 +382,8 @@ def enrich_stock_vintages(frame, config, *, return_v2=False):
             )
 
         def add(suffix, unit, values, *, region=asset["region"], prefix=prefix, years=result.years):
+            if not include_v1:
+                return
             rows.append(
                 {
                     "Model": config["model"],
@@ -503,11 +505,15 @@ def enrich_stock_vintages(frame, config, *, return_v2=False):
                 "deviation from linear interpolation; source-anchor residuals reported separately"
             )
         diagnostics.append(diagnostic)
-    annual = _annualize_originals(frame, range(ref, end + 1))
-    enriched = pd.concat([annual, pd.DataFrame(rows)], ignore_index=True)
-    enriched = enriched[
-        [c for c in enriched.columns if c not in year_columns(enriched)] + year_columns(enriched)
-    ]
+    if include_v1:
+        annual = _annualize_originals(frame, range(ref, end + 1))
+        enriched = pd.concat([annual, pd.DataFrame(rows)], ignore_index=True)
+        enriched = enriched[
+            [c for c in enriched.columns if c not in year_columns(enriched)]
+            + year_columns(enriched)
+        ]
+    else:
+        enriched = frame
     validate_frame(enriched)
     if return_v2:
         return enriched, diagnostics, pd.DataFrame(v2_rows)
@@ -522,6 +528,7 @@ def prepare_stock_vintages(
     filter_output=False,
     encrypt_to=None,
     key_file=None,
+    package_only=False,
     overwrite=False,
 ):
     """Write enriched CSV and hashed report, optionally filtering and encrypting.
@@ -534,7 +541,13 @@ def prepare_stock_vintages(
     destination = output_dir / f"{source.stem}_stock_vintages.csv"
     package_path = output_dir / f"{source.stem}_stock_vintages_v2"
     report_path = output_dir / f"{source.stem}_stock_vintages_report.json"
-    paths = [destination, report_path, package_path]
+    if package_only and (filter_output or encrypt_to is not None):
+        raise IamPreprocessorError(
+            "Package-only output cannot be filtered or encrypted as a v1 IAM CSV."
+        )
+    paths = [report_path, package_path]
+    if not package_only:
+        paths.append(destination)
     if encrypt_to is not None:
         paths.append(Path(encrypt_to) / destination.name)
     if len({p.resolve() for p in paths}) != len(paths):
@@ -542,7 +555,9 @@ def prepare_stock_vintages(
     if not overwrite and any(p.exists() for p in paths):
         raise IamPreprocessorError("Output already exists; use --overwrite to replace it.")
     frame = read_frame(source)
-    enriched, diagnostics, v2 = enrich_stock_vintages(frame, config, return_v2=True)
+    enriched, diagnostics, v2 = enrich_stock_vintages(
+        frame, config, return_v2=True, include_v1=not package_only
+    )
     report = ProcessingReport(
         model=config["model"],
         input_path=str(source.resolve()),
@@ -552,6 +567,7 @@ def prepare_stock_vintages(
         assumptions={
             "stock_vintage_schema_version": 1,
             "canonical_stock_vintage_schema_version": 2,
+            "v1_compatibility_output": not package_only,
             "origin": "reconstructed_not_native",
             "scenario": config["scenario"],
             "reference_year": config["reference_year"],
@@ -614,18 +630,26 @@ def prepare_stock_vintages(
         config=config,
         diagnostics=diagnostics,
         overwrite=overwrite,
+        csv_copy=not package_only,
     )
     report.assumptions["vintage_package_path"] = str(package_path.resolve())
     report.assumptions["vintage_package_manifest_sha256"] = sha256_file(
         package_path / "datapackage.json"
     )
-    write_csv_atomic(enriched, destination, overwrite=overwrite)
-    report.output_path, report.output_sha256 = str(destination.resolve()), sha256_file(destination)
-    report.output_rows = len(enriched)
-    if encrypt_to is not None:
-        encrypted = Path(encrypt_to) / destination.name
-        encrypt_file(destination, encrypted, key_file=key_file, overwrite=overwrite)
-        report.encrypted_output_path = str(encrypted.resolve())
-        report.encrypted_output_sha256 = sha256_file(encrypted)
+    if package_only:
+        canonical = package_path / "vintages.parquet"
+        report.output_path = str(canonical.resolve())
+        report.output_sha256 = sha256_file(canonical)
+        report.output_rows = len(v2)
+    else:
+        write_csv_atomic(enriched, destination, overwrite=overwrite)
+        report.output_path = str(destination.resolve())
+        report.output_sha256 = sha256_file(destination)
+        report.output_rows = len(enriched)
+        if encrypt_to is not None:
+            encrypted = Path(encrypt_to) / destination.name
+            encrypt_file(destination, encrypted, key_file=key_file, overwrite=overwrite)
+            report.encrypted_output_path = str(encrypted.resolve())
+            report.encrypted_output_sha256 = sha256_file(encrypted)
     report.write(report_path, overwrite=overwrite)
     return report

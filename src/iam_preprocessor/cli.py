@@ -122,6 +122,7 @@ def stock_vintages_command(
     filter_output: bool = typer.Option(False, "--filter-output"),
     encrypt_to: Path | None = typer.Option(None, "--encrypt-to"),
     key_file: Path | None = typer.Option(None, "--key-file", exists=True, readable=True),
+    package_only: bool = typer.Option(False, "--package-only"),
     overwrite: bool = typer.Option(False, "--overwrite"),
 ) -> None:
     """Reconstruct stock vintages and write v2 plus compatible v1 outputs."""
@@ -134,6 +135,7 @@ def stock_vintages_command(
                 filter_output=filter_output,
                 encrypt_to=encrypt_to,
                 key_file=key_file,
+                package_only=package_only,
                 overwrite=overwrite,
             )
         ]
