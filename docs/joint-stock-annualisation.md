@@ -76,12 +76,10 @@ reported to distinguish unavoidable mismatch from the extra mismatch accepted
 for smoothness. Minimizing only that absolute discrepancy can concentrate new
 capacity into narrow spikes; it is a diagnostic, not the selected smooth fit.
 
-SLSQP solves the convex quadratic fit. The code checks stock/inflow residuals,
-nonnegativity and independent first-order stationarity/complementarity conditions.
-If equality constraints force bounded inflows exactly to zero and SLSQP reports a
-spurious incompatible-bound or KKT failure, HiGHS first proves which variables
-cannot be positive; only those columns are removed before retrying the same
-quadratic problem. Their indices are recorded in the report.
+Pinned OSQP solves the convex quadratic fit. SciPy HiGHS independently checks
+linear feasibility first. The code rejects solutions whose stock, inflow,
+nonnegativity, primal, or dual residual certificates exceed their declared
+tolerances. Solver status, residuals and iterations are recorded in the report.
 It aborts on solver failure; a visually smooth plot does not count as validation.
 Curvature need not improve relative to the old stock-only baseline when newly
 enforcing observed sales samples introduces additional constraints.

@@ -3,14 +3,16 @@
 The optimization is convex: conditional survival and any proportional extra
 exit fractions are fixed before fitting. Additional exits are not invented to
 force agreement with reported inflows. SciPy HiGHS checks linear feasibility;
-SLSQP minimizes a quadratic curvature objective on that feasible set.
+pinned OSQP minimizes a quadratic curvature objective on that feasible set.
 """
 
 from __future__ import annotations
 
 import numpy as np
+import osqp
 from scipy.linalg import qr
-from scipy.optimize import Bounds, LinearConstraint, linprog, lsq_linear, minimize
+from scipy.optimize import linprog
+from scipy.sparse import csc_matrix, eye, vstack
 
 from .exceptions import DataValidationError
 from .stock_model import CohortResult
@@ -154,118 +156,55 @@ def fit_annual_additions(
         minimum_residual = float(feasible.fun)
         equality, target = _independent_equalities(response, stock_rhs)
     curvature = np.diff(np.eye(n), n=2, axis=0)
+    hessian = curvature.T @ curvature + reference_weight * np.eye(n)
+    linear = -2 * reference_weight * reference
+    if not exact:
+        hessian += inflow_weight * flow_matrix.T @ flow_matrix
+        linear -= 2 * inflow_weight * flow_matrix.T @ flow_rhs
+    constraints = vstack((csc_matrix(equality), eye(n, format="csc")), format="csc")
+    lower = np.r_[target, np.zeros(n)]
+    upper = np.r_[target, np.full(n, np.inf)]
+    solver = osqp.OSQP()
+    solver.setup(
+        P=csc_matrix(2 * hessian),
+        q=linear,
+        A=constraints,
+        l=lower,
+        u=upper,
+        eps_abs=1e-10,
+        eps_rel=1e-10,
+        max_iter=200_000,
+        polishing=True,
+        verbose=False,
+    )
+    solver.warm_start(x=feasible.x[:n])
+    optimized = solver.solve(raise_error=False)
+    if optimized.info.status_val not in (1, 2):
+        raise DataValidationError(f"Joint convex QP failed: {optimized.info.status}")
+    values = np.asarray(optimized.x)
+    if (values < -1e-9).any():
+        raise DataValidationError("Annual fit produced negative additions.")
+    values = np.maximum(values, 0)
+    stock_error = response @ values - stock_rhs
+    errors = flow_matrix @ values - flow_rhs
+    if np.max(np.abs(stock_error), initial=0) > 1e-8:
+        raise DataValidationError("Annual fit did not preserve stock anchors.")
+    if exact and np.max(np.abs(errors), initial=0) > 1e-8:
+        raise DataValidationError("Annual fit did not preserve inflow constraints.")
+    stationarity = float(optimized.info.dual_res)
+    primal_residual = float(optimized.info.prim_res)
+    if stationarity > 2e-6 or primal_residual > 1e-8:
+        raise DataValidationError(
+            "Annual fit failed its QP certificate: "
+            f"dual_residual={stationarity:.6g}, primal_residual={primal_residual:.6g}."
+        )
 
     def objective(x):
-        bending, deviation = curvature @ x[:n], x[:n] - reference
+        bending, deviation = curvature @ x, x - reference
         error = flow_matrix @ x - flow_rhs
         penalty = 0 if exact else inflow_weight * (error @ error)
         return bending @ bending + reference_weight * (deviation @ deviation) + penalty
 
-    def gradient(x):
-        result = np.zeros_like(x)
-        result[:n] = 2 * (
-            curvature.T @ (curvature @ x[:n]) + reference_weight * (x[:n] - reference)
-        )
-        if not exact:
-            result += 2 * inflow_weight * flow_matrix.T @ (flow_matrix @ x - flow_rhs)
-        return result
-
-    # A tighter tolerance is needed for some nearly stationary declining stocks.
-    # Retry only if the independent KKT certificate requires it; demanding this
-    # tolerance universally can stall SLSQP on degenerate bound-active faces.
-    start = feasible.x[:n]
-    free = np.arange(n)
-    presolved_fixed_zero = []
-
-    def presolve_fixed_zeros():
-        nonlocal free, presolved_fixed_zero
-        possible = []
-        for column in range(n):
-            direction = np.zeros(n)
-            direction[column] = -1
-            maximum = linprog(
-                direction,
-                A_eq=equality,
-                b_eq=target,
-                bounds=(0, None),
-                method="highs",
-                options=lp_options,
-            )
-            if maximum.status == 3 or (maximum.success and maximum.x[column] > 1e-10):
-                possible.append(column)
-            elif not maximum.success:
-                raise DataValidationError(f"Joint bound presolve failed: {maximum.message}")
-        free = np.asarray(possible, dtype=int)
-        presolved_fixed_zero = sorted(set(range(n)) - set(possible))
-        if not len(free):
-            raise DataValidationError("Joint annual fit has no free inflow variables.")
-
-    def optimize(current, ftol):
-        def expand(values):
-            expanded = np.zeros(n)
-            expanded[free] = values
-            return expanded
-
-        reduced_equality, reduced_target = _independent_equalities(equality[:, free], target)
-        constraints = [LinearConstraint(reduced_equality, reduced_target, reduced_target)]
-        optimized = minimize(
-            lambda values: objective(expand(values)),
-            current[free],
-            jac=lambda values: gradient(expand(values))[free],
-            method="SLSQP",
-            bounds=Bounds(0, np.inf),
-            constraints=constraints,
-            options={"ftol": ftol, "maxiter": 2000},
-        )
-        optimized.x = expand(optimized.x)
-        return optimized
-
-    for ftol in (1e-13, 1e-15):
-        optimized = optimize(start, ftol)
-        if not optimized.success and len(free) == n:
-            # SLSQP can report incompatible inequalities when equality constraints
-            # force some bounded variables exactly to zero. Prove those zeros with
-            # HiGHS, remove only those columns, and retry the same convex problem.
-            presolve_fixed_zeros()
-            optimized = optimize(start, ftol)
-        if not optimized.success:
-            raise DataValidationError(f"Joint smooth annual fit failed: {optimized.message}")
-        values = optimized.x[:n]
-        if (values < -1e-10).any():
-            raise DataValidationError("Annual fit produced negative additions.")
-        values = np.maximum(values, 0)
-        stock_error = response @ values - stock_rhs
-        errors = flow_matrix @ values - flow_rhs
-        if np.max(np.abs(stock_error), initial=0) > 1e-8:
-            raise DataValidationError("Annual fit did not preserve stock anchors.")
-        if exact and np.max(np.abs(errors), initial=0) > 1e-8:
-            raise DataValidationError("Annual fit did not preserve inflow constraints.")
-        # Independently certify convex optimality including nonnegative bounds.
-        active = np.flatnonzero(values < 1e-9)
-        kkt_matrix = np.c_[equality.T, -np.eye(n)[:, active]]
-        dual = lsq_linear(
-            kkt_matrix,
-            -gradient(values),
-            method="bvls",
-            tol=1e-12,
-            bounds=(
-                np.r_[np.full(len(target), -np.inf), np.zeros(len(active))],
-                np.full(len(target) + len(active), np.inf),
-            ),
-        )
-        stationarity = float(np.max(np.abs(kkt_matrix @ dual.x + gradient(values))))
-        complementarity = float(np.max(np.abs(dual.x[len(target) :] * values[active]), initial=0))
-        if dual.success and stationarity <= 2e-6 and complementarity <= 1e-8:
-            break
-        if len(free) == n:
-            presolve_fixed_zeros()
-        start = values
-    else:
-        raise DataValidationError(
-            "Annual fit failed its independent convex optimality check: "
-            f"stationarity={stationarity:.6g}, complementarity={complementarity:.6g}, "
-            f"dual_success={dual.success}."
-        )
     return values * scale, {
         "exact_inflow_constraints_feasible": exact,
         "inflow_constraint_policy": inflow_constraints,
@@ -275,13 +214,12 @@ def fit_annual_additions(
         "quantity_scale": scale,
         "reference_weight": reference_weight,
         "inflow_weight": inflow_weight,
-        "objective": float(objective(optimized.x)),
-        "iterations": int(optimized.nit),
-        "final_solver_ftol": ftol,
+        "objective": float(objective(values)),
+        "iterations": int(optimized.info.iter),
         "kkt_stationarity_max": stationarity,
-        "kkt_complementarity_max": complementarity,
-        "solver": "SciPy HiGHS linear feasibility / SLSQP convex quadratic smoothing",
-        "presolved_fixed_zero_inflow_indices": presolved_fixed_zero,
+        "primal_residual_max": primal_residual,
+        "solver_status": optimized.info.status,
+        "solver": "SciPy HiGHS feasibility / OSQP 1.0.4 convex quadratic smoothing",
     }
 
 

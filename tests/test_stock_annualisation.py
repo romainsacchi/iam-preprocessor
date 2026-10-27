@@ -58,6 +58,8 @@ def test_smooth_five_and_ten_year_periods_preserve_stock_and_additions(scale):
     assert result.inflow[6:].sum() / scale == pytest.approx(105, abs=1e-7)
     np.testing.assert_allclose(result.stock[[0, 5, 15]].sum(axis=1) / scale, [100, 115, 220])
     assert report["fitted_curvature_l2"] < report["baseline_curvature_l2"] / 2
+    assert report["solver"].startswith("SciPy HiGHS feasibility / OSQP 1.0.4")
+    assert report["primal_residual_max"] < 1e-8
     assert (
         abs(result.inflow[6] - result.inflow[5]) < abs(baseline.inflow[6] - baseline.inflow[5]) / 2
     )

@@ -106,8 +106,9 @@ service does not identify cohort-specific mileage or capacity factors. Power
 cases must respect 0.031536 EJ/yr per GW (8,760 hours). Optional cases violating
 this bound are recorded in `rejected-sensitivities.json` and not exported. A
 primary-case failure, selector error or numerical solver failure aborts the run.
-SLSQP convergence may be refined once if an independent convex optimality check
-fails; stock conservation and KKT tolerances are never relaxed.
+Pinned OSQP performs the convex quadratic solve after an independent HiGHS
+feasibility check; stock conservation and solver-certificate tolerances are
+never relaxed.
 
 Each new group includes primary, linear-stock, inflow-only, ±25% maximum lifetime,
 and low/high inflow-penalty cases. Existing groups retain their original broader
