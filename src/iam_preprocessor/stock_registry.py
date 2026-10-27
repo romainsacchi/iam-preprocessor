@@ -78,6 +78,25 @@ def load_remind_asset_registry():
         for child in asset.get("children", []):
             if child not in assets or assets[child].get("parent") != asset_id:
                 raise DataValidationError(f"Invalid child for REMIND asset: {asset_id}/{child}")
+    excluded = registry.get("excluded_capacity_variables", {})
+    if not isinstance(excluded, dict):
+        raise DataValidationError("REMIND capacity exclusions must be a mapping.")
+    mapped_capacity = {
+        asset.get("stock_variable", f"Cap|Electricity|{asset.get('stock_suffix')}")
+        for asset in assets.values()
+        if asset["sector"] != "transport"
+    }
+    for variable, metadata in excluded.items():
+        if variable in mapped_capacity or not variable.startswith("Cap|"):
+            raise DataValidationError(f"Invalid REMIND capacity exclusion: {variable}")
+        if not isinstance(metadata, dict) or metadata.get("status") not in {
+            "ambiguous_lifetime",
+            "missing_lifetime",
+            "reporting_aggregate",
+        }:
+            raise DataValidationError(f"Invalid REMIND capacity exclusion: {variable}")
+        if not isinstance(metadata.get("reason"), str) or not metadata["reason"]:
+            raise DataValidationError(f"Missing REMIND capacity exclusion reason: {variable}")
     return registry, path
 
 

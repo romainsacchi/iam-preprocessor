@@ -589,3 +589,112 @@ assets:
     inflow_unit: Mt CO2/yr/yr
     capacity_basis: annual direct-air-capture capacity reported by REMIND
     aliases: [dac]
+excluded_capacity_variables:
+  Cap|Biochar:
+    status: ambiguous_lifetime
+    reason: one capacity series covers four biochar technologies with different lifetime variables
+  Cap|Electricity:
+    status: reporting_aggregate
+    reason: total electricity capacity overlaps mapped technology stocks
+  Cap|Electricity|+|Biomass:
+    status: reporting_aggregate
+    reason: biomass total overlaps technology-level electricity stocks
+  Cap|Electricity|+|Coal:
+    status: reporting_aggregate
+    reason: coal total overlaps technology-level electricity stocks
+  Cap|Electricity|+|Gas:
+    status: reporting_aggregate
+    reason: gas total overlaps technology-level electricity stocks
+  Cap|Electricity|+|Oil:
+    status: reporting_aggregate
+    reason: oil total overlaps the mapped oil electricity stock
+  Cap|Electricity|+|Solar:
+    status: reporting_aggregate
+    reason: solar total overlaps PV and CSP stocks
+  Cap|Electricity|+|Wind:
+    status: reporting_aggregate
+    reason: wind total overlaps onshore and offshore stocks
+  Cap|Electricity|Biomass|w/o CC:
+    status: ambiguous_lifetime
+    reason: capacity can include CHP and gasification technologies with different lifetimes
+  Cap|Electricity|CHP:
+    status: reporting_aggregate
+    reason: CHP total overlaps fuel-specific CHP stocks
+  Cap|Electricity|Coal|+|w/ CC:
+    status: reporting_aggregate
+    reason: coal CCS total overlaps technology-level coal stocks
+  Cap|Electricity|Coal|+|w/o CC:
+    status: reporting_aggregate
+    reason: coal non-CCS total overlaps technology-level coal stocks
+  Cap|Electricity|Gas|+|w/ CC:
+    status: reporting_aggregate
+    reason: gas CCS total overlaps the mapped combined-cycle CCS stock
+  Cap|Electricity|Gas|+|w/o CC:
+    status: reporting_aggregate
+    reason: gas non-CCS total overlaps combined-cycle, turbine, and CHP stocks
+  Cap|Electricity|Non-Biomass Renewables:
+    status: reporting_aggregate
+    reason: renewable total overlaps hydro, solar, wind, and geothermal stocks
+  Cap|Electricity|Storage|Battery:
+    status: reporting_aggregate
+    reason: battery total overlaps application-specific battery stocks
+  Cap|Electricity|Storage|Battery|For Wind:
+    status: ambiguous_lifetime
+    reason: one capacity series has separate onshore and offshore wind battery lifetimes
+  Cap|Gases:
+    status: reporting_aggregate
+    reason: total gas production capacity overlaps feedstock-level stocks
+  Cap|Gases|+|Natural Gas:
+    status: missing_lifetime
+    reason: no matching REMIND technology lifetime variable is disclosed
+  Cap|Heat:
+    status: reporting_aggregate
+    reason: total heat capacity overlaps technology-level heat stocks
+  Cap|Heat|+|Solar:
+    status: missing_lifetime
+    reason: no matching REMIND technology lifetime variable is disclosed
+  Cap|Hydrogen:
+    status: reporting_aggregate
+    reason: total hydrogen capacity overlaps technology-level hydrogen stocks
+  Cap|Hydrogen|+|Biomass:
+    status: reporting_aggregate
+    reason: biomass hydrogen total overlaps CCS and non-CCS stocks
+  Cap|Hydrogen|+|Coal:
+    status: reporting_aggregate
+    reason: coal hydrogen total overlaps CCS and non-CCS stocks
+  Cap|Hydrogen|+|Gas:
+    status: reporting_aggregate
+    reason: gas hydrogen total overlaps CCS and non-CCS stocks
+  Cap|Hydrogen|Fossil:
+    status: reporting_aggregate
+    reason: fossil hydrogen total overlaps coal and gas stocks
+  Cap|Hydrogen|Fossil|+|w/ CC:
+    status: reporting_aggregate
+    reason: fossil hydrogen CCS total overlaps coal and gas CCS stocks
+  Cap|Hydrogen|Fossil|+|w/o CC:
+    status: reporting_aggregate
+    reason: fossil hydrogen non-CCS total overlaps coal and gas stocks
+  Cap|Liquids:
+    status: reporting_aggregate
+    reason: total liquids capacity overlaps feedstock-level stocks
+  Cap|Liquids|+|Biomass:
+    status: ambiguous_lifetime
+    reason: one capacity series covers several biofuel technologies with different lifetimes
+  Cap|Liquids|+|Coal:
+    status: ambiguous_lifetime
+    reason: one capacity series covers CCS and non-CCS coal liquids with different lifetimes
+  Cap|Liquids|+|Gas:
+    status: missing_lifetime
+    reason: no matching REMIND technology lifetime variable is disclosed
+  Cap|Liquids|Fossil:
+    status: reporting_aggregate
+    reason: fossil liquids total overlaps coal, gas, and oil stocks
+  Cap|Solids:
+    status: reporting_aggregate
+    reason: total solids capacity overlaps feedstock-level stocks
+  Cap|Solids|+|Biomass:
+    status: missing_lifetime
+    reason: no matching REMIND technology lifetime variable is disclosed
+  Cap|Solids|+|Coal:
+    status: missing_lifetime
+    reason: no matching REMIND technology lifetime variable is disclosed

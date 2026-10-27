@@ -15,6 +15,7 @@ from .io import discover_inputs, read_frame, write_csv_atomic
 from .message import prepare_message
 from .remind import prepare_remind
 from .remind_stock_config import write_remind_stock_config
+from .remind_stock_inventory import write_remind_stock_inventory
 from .stock_vintages import prepare_stock_vintages
 
 app = typer.Typer(
@@ -173,6 +174,26 @@ def remind_stock_config_command(
         typer.echo(
             "Unavailable asset families: " + ", ".join(sorted({s["asset"] for s in skipped}))
         )
+
+
+@app.command("remind-stock-inventory")
+def remind_stock_inventory_command(
+    source: Path = typer.Argument(..., exists=True, readable=True, dir_okay=False),
+    destination: Path = typer.Option(..., "--output", "-o", dir_okay=False),
+    regions: list[str] | None = typer.Option(None, "--region"),
+    end_year: int | None = typer.Option(None, "--end-year"),
+    overwrite: bool = typer.Option(False, "--overwrite"),
+) -> None:
+    """Audit all REMIND capacity/addition and vehicle stock/sales pairs."""
+    path, inventory = write_remind_stock_inventory(
+        source,
+        destination,
+        regions=regions,
+        end_year=end_year,
+        overwrite=overwrite,
+    )
+    counts = inventory["status"].value_counts().to_dict()
+    typer.echo(f"Wrote {path} ({len(inventory)} pairs; statuses={counts})")
 
 
 @app.command("filter")
