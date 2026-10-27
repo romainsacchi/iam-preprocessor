@@ -37,6 +37,9 @@ Stock-vintage enrichment
 .. automodule:: iam_preprocessor.stock_config
    :members: load_stock_config
 
+.. automodule:: iam_preprocessor.remind_stock_inventory
+   :members:
+
 Transport, filtering, and cryptography
 ---------------------------------------
 

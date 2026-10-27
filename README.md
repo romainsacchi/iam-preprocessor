@@ -59,31 +59,41 @@ To reconstruct stock vintages from a CSV, REMIND MIF or Excel table:
 ```console
 python -m pip install -e '.[stocks]'
 iam-preprocessor remind-stock-config scenario.mif -o stocks.yaml \
+  --region DEU --region FRA --region UKI --reconciliation joint
+iam-preprocessor remind-stock-inventory scenario.mif -o stock-inventory.csv \
   --region DEU --region FRA --region UKI
-iam-preprocessor stock-vintages scenario.mif --config stocks.yaml -o output/stocks
+iam-preprocessor stock-vintages scenario.mif --config stocks.yaml -o output/stocks \
+  --package-only
 ```
 
 The stock command writes a canonical, sparse v2 sidecar directory containing
-`vintages.parquet`, `vintages.csv.gz`, `validation.json`, and
-`datapackage.json`. The manifest binds the package to the exact IAM input,
-configuration, mapping registries, and optional evidence manifest. The existing
-wide `Stock Vintage|v1|...` CSV remains a compatibility output.
+`vintages.parquet`, `validation.json`, and `datapackage.json`. Without
+`--package-only`, it also writes `vintages.csv.gz` and the existing wide
+`Stock Vintage|v1|...` compatibility CSV. The manifest binds the package to the
+exact IAM input, configuration, mapping registries, and optional evidence
+manifest.
 
-The REMIND config builder keeps regions separate, reads power `Cap`, `New Cap`
-and `Tech|...|Lifetime`, and reads transport `Stock` and `Sales`. Reported
-`New Cap` and `Sales` values are treated as annual observations and linearly
-interpolated. If no `--region` is supplied, known aggregate regions are excluded.
-Generated schema-v2 configurations use strict `stock_flow` accounting: both
-stocks and additions are preserved, and an infeasible closed balance fails
-unless an explicit additional-retirement policy is selected.
+The REMIND config builder keeps regions separate; reads `Cap`, `New Cap`, and
+`Tech|...|Lifetime` for electricity, storage, hydrogen, heat, gases, liquids,
+and direct-air-capture infrastructure; and reads transport `Stock` and `Sales`.
+Transport is reconstructed at a non-overlapping vehicle-class/powertrain layer,
+with an aggregate fallback only when the complete child layer is absent.
+Reported `New Cap` and `Sales` values are treated as annual observations and
+linearly interpolated. The inventory command accounts for every stock-like
+series and labels reporting aggregates, finer descendants, ambiguous or missing
+lifetimes, and missing inflows. If no `--region` is supplied, known aggregate
+regions are excluded. Strict reconciliation preserves both stocks and additions
+or fails; `--reconciliation joint` preserves stock anchors and reports adjusted
+addition constraints explicitly.
 
 The feature is opt-in and produces labelled reconstructions, not native IAM
 vintages. No new lifetime defaults are applied to other preprocessing commands.
 See the [configuration, method and variable contract](docs/stock-vintages.md)
 and [single-scenario validation strategy](docs/stock-vintage-validation.md).
-The [expanded REMIND example](docs/remind-sector-expansion.md) adds liquid-fuel
-cars, onshore/offshore wind, nuclear, gas turbines, geothermal and CSP, with
-audited DfT/EIA initial cohorts and explicit category limitations.
+The [expanded REMIND example](docs/remind-sector-expansion.md) documents the
+earlier observation-backed pilot; the registry-driven builder now covers the
+broader scenario infrastructure catalogue while retaining explicit category
+limitations.
 
 ## Model-specific transformations
 

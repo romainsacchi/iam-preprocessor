@@ -11,15 +11,21 @@ reproduction commands are in ``docs/remind-sector-expansion.md``.
 .. code-block:: console
 
    iam-preprocessor remind-stock-config scenario.mif -o stocks.yaml \
+     --region DEU --region FRA --region UKI --reconciliation joint
+   iam-preprocessor remind-stock-inventory scenario.mif -o stock-inventory.csv \
      --region DEU --region FRA --region UKI
-   iam-preprocessor stock-vintages scenario.mif --config stocks.yaml -o output/stocks
+   iam-preprocessor stock-vintages scenario.mif --config stocks.yaml -o output/stocks \
+     --package-only
 
 The command reads one model/scenario per file, checks exact variable names and
 units, and appends annual variables under ``Stock Vintage|v1|``. Its report pins
 source, observation and output hashes, software versions and assumptions.
 It also writes the canonical schema-v2 sidecar with sparse Parquet vintages, a
-compressed CSV mirror, a machine-readable validation contract, and a
-checksum-bound manifest. The wide schema-v1 variables remain compatible output.
+machine-readable validation contract, and a checksum-bound manifest.
+``--package-only`` omits the compressed CSV mirror and wide schema-v1
+compatibility output for large catalogues. The inventory command classifies all
+stock-like variables, including deliberately excluded aggregates and mappings
+blocked by ambiguous or missing lifetimes.
 ``--filter-output`` keeps the enrichment namespace; ``--encrypt-to`` uses the
 existing premise-compatible encryption workflow. Preserve the associated JSON
 report and use the paired premise implementation branch.

@@ -218,14 +218,26 @@ Generate a starting configuration for separate REMIND regions with:
 
 ```console
 iam-preprocessor remind-stock-config scenario.mif -o stocks.yaml \
+  --region DEU --region FRA --region UKI --reconciliation joint
+iam-preprocessor remind-stock-inventory scenario.mif -o stock-inventory.csv \
   --region DEU --region FRA --region UKI
 ```
 
 Without `--region`, the builder emits every nonaggregate region found in the
-scenario. It maps exact leaf power technologies and the available transport
-classes, skipping asset families absent from the export. The opening composition
-is an explicitly labelled equilibrium prior because the scenario does not report
-the initial vintage distribution.
+scenario. It maps reviewed one-to-one stock/addition/lifetime selectors for
+electricity, storage, hydrogen, heat, gases, liquids and direct-air capture.
+Broad reporting totals are excluded to prevent double counting. Transport uses
+the complete vehicle-class/powertrain child layer when it sums to the reported
+parent at every source anchor; otherwise it falls back to that parent. The
+opening composition is an explicitly labelled equilibrium prior because the
+scenario does not report the initial vintage distribution.
+
+`remind-stock-inventory` provides the coverage ledger before a run. Each
+stock-like variable is labelled as mapped, an aggregate fallback, a reporting
+aggregate, below the selected layer, blocked by an ambiguous/missing lifetime,
+or lacking annual additions. It also reports selector availability, regional
+coverage, active years and maximum stock. An unclassified row is a registry gap
+that should be reviewed before expanding coverage.
 
 For transport, the builder uses the disclosed `serviceLife` values as fixed
 retirement ages: 20 years for four-wheel LDVs, 15 for two-wheel LDVs, buses,
@@ -291,12 +303,24 @@ summary rather than being mixed with cohort rows. Parquet is canonical; the
 compressed CSV is an inspection copy. Package creation is finalized atomically
 and every resource has a SHA-256 in `datapackage.json`.
 
+For large catalogues, pass `--package-only`. This omits both the wide schema-v1
+IAM CSV and the compressed long-table inspection copy; `vintages.parquet`
+remains canonical and the report points to it. Filtering and v1 encryption are
+therefore unavailable in this mode.
+
 ## CLI, reports and runtime consumption
 
 ```console
 python -m pip install -e '.[stocks]'
 iam-preprocessor stock-vintages scenario.mif --config stocks.yaml -o output/stocks \
   --filter-output --encrypt-to output/encrypted --key-file local-test.key
+```
+
+For canonical sidecar production without compatibility copies:
+
+```console
+iam-preprocessor stock-vintages scenario.mif --config stocks.yaml -o output/stocks \
+  --package-only
 ```
 
 Leave out the final three options to preserve every original row and write
