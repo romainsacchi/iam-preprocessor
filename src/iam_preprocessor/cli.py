@@ -170,11 +170,15 @@ def remind_stock_config_command(
     )
     typer.echo(
         f"Wrote {path} ({len(config['assets'])} region/asset mappings; "
-        f"{len(skipped)} unavailable mappings skipped)"
+        f"{len(skipped)} non-selected mappings recorded)"
     )
     if skipped:
+        reasons = {}
+        for item in skipped:
+            reasons[item["reason"]] = reasons.get(item["reason"], 0) + 1
         typer.echo(
-            "Unavailable asset families: " + ", ".join(sorted({s["asset"] for s in skipped}))
+            "Non-selected mapping reasons: "
+            + ", ".join(f"{k}={v}" for k, v in sorted(reasons.items()))
         )
 
 
