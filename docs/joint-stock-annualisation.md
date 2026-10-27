@@ -77,12 +77,17 @@ for smoothness. Minimizing only that absolute discrepancy can concentrate new
 capacity into narrow spikes; it is a diagnostic, not the selected smooth fit.
 
 Pinned OSQP solves the convex quadratic fit. SciPy HiGHS independently checks
-linear feasibility first. The code rejects solutions whose stock, inflow,
-nonnegativity, primal, or dual residual certificates exceed their declared
-tolerances. Solver status, residuals and iterations are recorded in the report.
-It aborts on solver failure; a visually smooth plot does not count as validation.
-Curvature need not improve relative to the old stock-only baseline when newly
-enforcing observed sales samples introduces additional constraints.
+linear feasibility first. Equality rows are numerically rescaled when source
+anchors span several orders of magnitude; the original equations and final
+residual checks are unchanged. For a penalized fit only, SciPy SLSQP is a
+recorded fallback when OSQP does not meet its certificate. The fallback must
+pass the same nonnegativity and equality checks plus an independently computed
+active-set KKT check. Exact source-inflow constraints never use that fallback.
+Solver, status, scaling, residuals and iterations are recorded in the report.
+The code aborts if either certificate fails; a visually smooth plot does not
+count as validation. Curvature need not improve relative to the old stock-only
+baseline when newly enforcing observed sales samples introduces additional
+constraints.
 
 ## Configuration
 

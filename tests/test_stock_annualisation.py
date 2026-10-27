@@ -1,6 +1,9 @@
 """Conservation and constraint semantics, independent of plot smoothness."""
 
+from types import SimpleNamespace
+
 import numpy as np
+import osqp
 import pytest
 
 from iam_preprocessor.exceptions import DataValidationError
@@ -97,6 +100,52 @@ def test_conflict_is_rejected_or_minimally_reported_never_hidden():
     assert not report["exact_inflow_constraints_feasible"]
     assert report["minimum_sum_absolute_rate_residual"] == pytest.approx(4)
     assert report["actual_sum_absolute_rate_residual"] == pytest.approx(4)
+
+
+def test_exact_constraints_remain_stable_across_tiny_and_large_anchors():
+    values, report = fit_annual_additions(
+        response=np.array([[1, 1, 0, 0], [0, 0, 1, 1]], dtype=float),
+        initial_stock=np.zeros(2),
+        stock_targets=np.array([0.1, 1e-5]),
+        flow_matrix=np.eye(4),
+        flow_targets=np.array([0.1, 0, 1e-5, 0]),
+        reference=np.array([0.1, 0, 1e-5, 0]),
+        inflow_constraints="strict",
+        reference_weight=0.01,
+        inflow_weight=100,
+    )
+    np.testing.assert_allclose(values, [0.1, 0, 1e-5, 0], atol=1e-12)
+    assert report["constraint_scale_max"] >= 1e4
+    assert report["stock_anchor_max_absolute_residual"] < 1e-12
+    assert report["primal_residual_max"] < 1e-8
+
+
+def test_penalized_fit_has_certified_fallback_when_osqp_does_not_converge(monkeypatch):
+    failed = SimpleNamespace(
+        x=np.zeros(2),
+        info=SimpleNamespace(
+            status_val=7,
+            status="maximum iterations reached",
+            prim_res=1.0,
+            dual_res=1.0,
+            iter=1_000_000,
+        ),
+    )
+    monkeypatch.setattr(osqp.OSQP, "solve", lambda self, **kwargs: failed)
+    values, report = fit_annual_additions(
+        response=np.eye(2),
+        initial_stock=np.zeros(2),
+        stock_targets=np.array([2.0, 3.0]),
+        flow_matrix=np.eye(2),
+        flow_targets=np.array([4.0, 5.0]),
+        reference=np.array([4.0, 5.0]),
+        inflow_constraints="penalized",
+        reference_weight=0.01,
+        inflow_weight=100,
+    )
+    np.testing.assert_allclose(values, [2, 3])
+    assert "SLSQP" in report["solver"]
+    assert report["solver_certificate"] == "independent residual checks passed"
 
 
 def test_decline_retains_explicit_baseline_exit_fractions():

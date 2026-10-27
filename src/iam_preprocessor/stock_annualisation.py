@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import osqp
 from scipy.linalg import qr
-from scipy.optimize import linprog
+from scipy.optimize import Bounds, LinearConstraint, linprog, minimize
 from scipy.sparse import csc_matrix, eye, vstack
 
 from .exceptions import DataValidationError
@@ -161,51 +161,135 @@ def fit_annual_additions(
     if not exact:
         hessian += inflow_weight * flow_matrix.T @ flow_matrix
         linear -= 2 * inflow_weight * flow_matrix.T @ flow_rhs
-    constraints = vstack((csc_matrix(equality), eye(n, format="csc")), format="csc")
-    lower = np.r_[target, np.zeros(n)]
-    upper = np.r_[target, np.full(n, np.inf)]
-    solver = osqp.OSQP()
-    solver.setup(
-        P=csc_matrix(2 * hessian),
-        q=linear,
-        A=constraints,
-        l=lower,
-        u=upper,
-        eps_abs=1e-10,
-        eps_rel=1e-10,
-        max_iter=1_000_000,
-        polishing=True,
-        scaled_termination=True,
-        adaptive_rho_interval=25,
-        verbose=False,
+    qp_feasible = linprog(
+        np.zeros(n),
+        A_eq=exact_a if exact else response,
+        b_eq=exact_b if exact else stock_rhs,
+        bounds=(0, None),
+        method="highs",
     )
-    solver.warm_start(x=feasible.x[:n])
-    optimized = solver.solve(raise_error=False)
-    if optimized.info.status_val not in (1, 2):
-        raise DataValidationError(f"Joint convex QP failed: {optimized.info.status}")
-    values = np.asarray(optimized.x)
-    if (values < -1e-9).any():
-        raise DataValidationError("Annual fit produced negative additions.")
-    values = np.maximum(values, 0)
-    stock_error = response @ values - stock_rhs
-    errors = flow_matrix @ values - flow_rhs
-    if np.max(np.abs(stock_error), initial=0) > 1e-8:
-        raise DataValidationError("Annual fit did not preserve stock anchors.")
-    if exact and np.max(np.abs(errors), initial=0) > 1e-8:
-        raise DataValidationError("Annual fit did not preserve inflow constraints.")
-    stationarity = float(optimized.info.dual_res)
-    primal_residual = float(optimized.info.prim_res)
-    if stationarity > 2e-6 or primal_residual > 1e-8:
-        raise DataValidationError(
-            "Annual fit failed its QP certificate: "
-            f"dual_residual={stationarity:.6g}, primal_residual={primal_residual:.6g}."
-        )
+    if not qp_feasible.success:
+        raise DataValidationError(f"Joint QP feasibility failed: {qp_feasible.message}")
+    equality_scale = 1 / np.maximum(np.abs(target), 1e-6)
+    constraints = vstack(
+        (csc_matrix(equality * equality_scale[:, None]), eye(n, format="csc")),
+        format="csc",
+    )
+    scaled_target = target * equality_scale
+    lower = np.r_[scaled_target, np.zeros(n)]
+    upper = np.r_[scaled_target, np.full(n, np.inf)]
 
     def objective(x):
         bending, deviation = curvature @ x, x - reference
         error = flow_matrix @ x - flow_rhs
         penalty = 0 if exact else inflow_weight * (error @ error)
         return bending @ bending + reference_weight * (deviation @ deviation) + penalty
+
+    def solve_qp(tolerance, polishing):
+        solver = osqp.OSQP()
+        solver.setup(
+            P=csc_matrix(2 * hessian),
+            q=linear,
+            A=constraints,
+            l=lower,
+            u=upper,
+            eps_abs=tolerance,
+            eps_rel=tolerance,
+            eps_prim_inf=1e-10,
+            eps_dual_inf=1e-10,
+            max_iter=1_000_000,
+            polishing=polishing,
+            scaled_termination=True,
+            adaptive_rho_interval=25,
+            verbose=False,
+        )
+        solver.warm_start(x=qp_feasible.x)
+        return solver.solve(raise_error=False)
+
+    solver_tolerance = 1e-10
+    optimized = solve_qp(solver_tolerance, True)
+    if optimized.info.status_val not in (1, 2):
+        # HiGHS has already certified feasibility. Very small stock anchors relative
+        # to the catalogue maximum can make OSQP's infeasibility heuristic trigger
+        # at the tighter tolerance, so retry at the independently enforced residual.
+        solver_tolerance = 1e-8
+        optimized = solve_qp(solver_tolerance, False)
+    osqp_values = np.asarray(optimized.x) if optimized.x is not None else np.full(n, np.nan)
+    osqp_equality_error = equality @ osqp_values - target
+    osqp_valid = (
+        np.isfinite(osqp_values).all()
+        and osqp_values.min() >= -1e-9
+        and np.max(np.abs(osqp_equality_error), initial=0) <= 1e-8
+        and optimized.info.dual_res <= 2e-6
+        and optimized.info.prim_res <= 1e-8
+    )
+    if not osqp_valid and exact:
+        raise DataValidationError(
+            "Joint convex QP failed its independently checked constraints: "
+            f"status={optimized.info.status}, minimum={osqp_values.min():.6g}, "
+            f"equality_residual={np.max(np.abs(osqp_equality_error)):.6g}, "
+            f"primal_residual={optimized.info.prim_res:.6g}, "
+            f"dual_residual={optimized.info.dual_res:.6g}."
+        )
+    if osqp_valid:
+        values = np.maximum(osqp_values, 0)
+        stationarity = float(optimized.info.dual_res)
+        solver_primal_residual = float(optimized.info.prim_res)
+        iterations = int(optimized.info.iter)
+        solver_status = optimized.info.status
+        solver_name = "SciPy HiGHS feasibility / OSQP 1.0.4 convex quadratic smoothing"
+    else:
+        fallback = minimize(
+            objective,
+            qp_feasible.x,
+            jac=lambda x: 2 * hessian @ x + linear,
+            constraints=LinearConstraint(equality, target, target),
+            bounds=Bounds(0, np.inf),
+            method="SLSQP",
+            options={"ftol": 1e-15, "maxiter": 10_000, "disp": False},
+        )
+        values = np.asarray(fallback.x)
+        equality_error = equality @ values - target
+        if (
+            not fallback.success
+            or not np.isfinite(values).all()
+            or values.min() < -1e-9
+            or np.max(np.abs(equality_error), initial=0) > 1e-8
+        ):
+            raise DataValidationError(
+                "Penalized joint QP failed OSQP and SLSQP fallback: "
+                f"osqp={optimized.info.status}; slsqp={fallback.message}"
+            )
+        values = np.maximum(values, 0)
+        gradient = 2 * hessian @ values + linear
+        free = values > 1e-9
+        multipliers = np.linalg.lstsq(equality[:, free].T, -gradient[free], rcond=None)[0]
+        reduced_gradient = gradient + equality.T @ multipliers
+        stationarity = float(
+            max(
+                np.max(np.abs(reduced_gradient[free]), initial=0),
+                np.max(np.maximum(0, -reduced_gradient[~free]), initial=0),
+            )
+        )
+        solver_primal_residual = float(np.max(np.abs(equality_error), initial=0))
+        iterations = int(fallback.nit)
+        solver_status = "solved"
+        solver_tolerance = None
+        solver_name = "SciPy HiGHS feasibility / SciPy SLSQP penalized-QP fallback"
+    stock_error = response @ values - stock_rhs
+    errors = flow_matrix @ values - flow_rhs
+    if np.max(np.abs(stock_error), initial=0) > 1e-8:
+        raise DataValidationError("Annual fit did not preserve stock anchors.")
+    if exact and np.max(np.abs(errors), initial=0) > 1e-8:
+        raise DataValidationError("Annual fit did not preserve inflow constraints.")
+    primal_residual = float(np.max(np.abs(equality @ values - target), initial=0))
+    if stationarity > 2e-6 or primal_residual > 1e-8:
+        raise DataValidationError(
+            "Annual fit failed its QP certificate: "
+            f"dual_residual={stationarity:.6g}, primal_residual={primal_residual:.6g}, "
+            f"objective={objective(values):.6g}, minimum={values.min():.6g}, "
+            f"iterations={iterations}."
+        )
 
     return values * scale, {
         "exact_inflow_constraints_feasible": exact,
@@ -217,11 +301,16 @@ def fit_annual_additions(
         "reference_weight": reference_weight,
         "inflow_weight": inflow_weight,
         "objective": float(objective(values)),
-        "iterations": int(optimized.info.iter),
+        "iterations": iterations,
         "kkt_stationarity_max": stationarity,
         "primal_residual_max": primal_residual,
-        "solver_status": optimized.info.status,
-        "solver": "SciPy HiGHS feasibility / OSQP 1.0.4 convex quadratic smoothing",
+        "solver_primal_residual_max": solver_primal_residual,
+        "solver_status": solver_status,
+        "solver_certificate": "independent residual checks passed",
+        "solver_tolerance": solver_tolerance,
+        "constraint_scale_min": float(equality_scale.min()),
+        "constraint_scale_max": float(equality_scale.max()),
+        "solver": solver_name,
     }
 
 
