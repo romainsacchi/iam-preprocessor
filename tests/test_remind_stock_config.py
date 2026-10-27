@@ -31,6 +31,45 @@ def frame():
     return pd.DataFrame(rows)
 
 
+def frame_with_transport_children(*, mismatch=False):
+    result = frame()
+    rows = []
+    shares = {
+        "BEV": 0.1,
+        "FCEV": 0.1,
+        "Gases": 0.2,
+        "Hybrid electric": 0.2,
+        "Liquids": 0.4,
+    }
+    for region in ("DEU", "FRA", "World"):
+        for fuel, share in shares.items():
+            if mismatch and fuel == "BEV":
+                share += 0.1
+            rows.extend(
+                [
+                    {
+                        "Model": "REMIND",
+                        "Scenario": "SSP2-EU21-NPi2025",
+                        "Region": region,
+                        "Variable": "Stock|Transport|Pass|Road|LDV|Four Wheelers|" + fuel,
+                        "Unit": "million veh",
+                        "2005": 4 * share,
+                        "2010": 5 * share,
+                    },
+                    {
+                        "Model": "REMIND",
+                        "Scenario": "SSP2-EU21-NPi2025",
+                        "Region": region,
+                        "Variable": "Sales|Transport|Pass|Road|LDV|Four Wheelers|" + fuel,
+                        "Unit": "million veh",
+                        "2005": 0.4 * share,
+                        "2010": 0.5 * share,
+                    },
+                ]
+            )
+    return pd.concat([result, pd.DataFrame(rows)], ignore_index=True)
+
+
 def test_builds_individual_region_power_and_transport_assets(tmp_path):
     config, skipped = build_remind_stock_config(frame(), regions=["DEU", "FRA"])
     assert config["reference_year"] == 2005
@@ -104,3 +143,30 @@ def test_joint_reconciliation_is_explicit_and_penalized():
     assert asset["annualisation"]["inflow_constraints"] == "penalized"
     with pytest.raises(DataValidationError, match="strict or joint"):
         build_remind_stock_config(frame(), reconciliation="automatic")
+
+
+def test_complete_transport_children_replace_aggregate_without_double_counting():
+    config, skipped = build_remind_stock_config(
+        frame_with_transport_children(), regions=["DEU"], include_power=False
+    )
+    ids = {asset["id"] for asset in config["assets"]}
+    assert ids == {
+        "passenger-ldv-4w-bev",
+        "passenger-ldv-4w-fcev",
+        "passenger-ldv-4w-gases",
+        "passenger-ldv-4w-hybrid",
+        "passenger-ldv-4w-liquids",
+    }
+    assert {item["reason"] for item in skipped if item["asset"] == "passenger-ldv-4w"} == {
+        "replaced by complete children"
+    }
+
+
+def test_transport_hierarchy_mismatch_uses_aggregate_fallback():
+    config, skipped = build_remind_stock_config(
+        frame_with_transport_children(mismatch=True),
+        regions=["DEU"],
+        include_power=False,
+    )
+    assert {asset["id"] for asset in config["assets"]} == {"passenger-ldv-4w"}
+    assert "parent-child hierarchy mismatch" in {item["reason"] for item in skipped}

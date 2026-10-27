@@ -39,6 +39,99 @@ def _value_at(row, reference_year, labels):
     return float(np.interp(reference_year, list(map(int, labels)), values))
 
 
+def _transport_selectors(mapping):
+    suffix = mapping["variable_suffix"]
+    return (
+        {
+            "variable": f"Stock|Transport|{suffix}",
+            "unit": mapping["stock_unit"],
+        },
+        {
+            "variable": f"Sales|Transport|{suffix}",
+            "unit": mapping["inflow_unit"],
+        },
+    )
+
+
+def _selectors_available(frame, region, selectors):
+    return all(
+        _row(frame, region, selector["variable"], selector["unit"]) is not None
+        for selector in selectors
+    )
+
+
+def _children_match_parent(frame, region, parent, children, labels):
+    """Return whether child Stock/Sales series partition their reporting parent."""
+    for selector_index in (0, 1):
+        parent_selector = _transport_selectors(parent)[selector_index]
+        parent_row = _row(frame, region, parent_selector["variable"], parent_selector["unit"])
+        if parent_row is None:
+            continue
+        child_rows = []
+        for child in children:
+            selector = _transport_selectors(child)[selector_index]
+            row = _row(frame, region, selector["variable"], selector["unit"])
+            if row is None:
+                return False
+            child_rows.append(pd.to_numeric(row[labels], errors="raise").to_numpy(float))
+        parent_values = pd.to_numeric(parent_row[labels], errors="raise").to_numpy(float)
+        if not np.allclose(np.sum(child_rows, axis=0), parent_values, rtol=1e-8, atol=1e-7):
+            return False
+    return True
+
+
+def _select_transport_assets(frame, region, mappings, labels):
+    """Choose a non-overlapping transport layer, with aggregate fallbacks."""
+    selected = []
+    skipped = []
+    child_ids = {child for row in mappings.values() for child in row.get("children", [])}
+    for asset_id, mapping in mappings.items():
+        if asset_id in child_ids or mapping["hierarchy"] != "aggregate":
+            continue
+        children = [(child, mappings[child]) for child in mapping["children"]]
+        complete_children = all(
+            _selectors_available(frame, region, _transport_selectors(child))
+            for _, child in children
+        )
+        parent_available = _selectors_available(frame, region, _transport_selectors(mapping))
+        hierarchy_matches = complete_children and _children_match_parent(
+            frame, region, mapping, [child for _, child in children], labels
+        )
+        if complete_children and (not parent_available or hierarchy_matches):
+            selected.extend(children)
+            skipped.append(
+                {
+                    "asset": asset_id,
+                    "region": region,
+                    "reason": "replaced by complete children",
+                }
+            )
+        elif parent_available:
+            selected.append((asset_id, mapping))
+            reason = (
+                "parent-child hierarchy mismatch"
+                if complete_children
+                else "aggregate fallback; incomplete children"
+            )
+            skipped.extend(
+                {"asset": child_id, "region": region, "reason": reason} for child_id, _ in children
+            )
+        else:
+            skipped.append({"asset": asset_id, "region": region, "reason": "missing selector"})
+            skipped.extend(
+                {"asset": child_id, "region": region, "reason": "missing selector"}
+                for child_id, _ in children
+            )
+    for asset_id, mapping in mappings.items():
+        if asset_id in child_ids or mapping["hierarchy"] == "aggregate":
+            continue
+        if _selectors_available(frame, region, _transport_selectors(mapping)):
+            selected.append((asset_id, mapping))
+        else:
+            skipped.append({"asset": asset_id, "region": region, "reason": "missing selector"})
+    return selected, skipped
+
+
 def _common_asset(
     asset_id,
     region,
@@ -203,25 +296,13 @@ def build_remind_stock_config(
                     )
                 )
         if include_transport:
-            for asset_id, mapping in transport_assets.items():
-                variable_suffix = mapping["variable_suffix"]
+            selected_transport, transport_skipped = _select_transport_assets(
+                frame, region, transport_assets, labels
+            )
+            skipped.extend(transport_skipped)
+            for asset_id, mapping in selected_transport:
                 service_life = mapping["service_life"]
-                stock = {
-                    "variable": f"Stock|Transport|{variable_suffix}",
-                    "unit": mapping["stock_unit"],
-                }
-                inflow = {
-                    "variable": f"Sales|Transport|{variable_suffix}",
-                    "unit": mapping["inflow_unit"],
-                }
-                if any(
-                    _row(frame, region, selector["variable"], selector["unit"]) is None
-                    for selector in (stock, inflow)
-                ):
-                    skipped.append(
-                        {"asset": asset_id, "region": region, "reason": "missing selector"}
-                    )
-                    continue
+                stock, inflow = _transport_selectors(mapping)
                 lifetime = {
                     "distribution": "fixed",
                     "initial_mean": service_life,

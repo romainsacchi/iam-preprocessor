@@ -83,7 +83,8 @@ assets:
     aliases: [concentrating-solar-power]
   passenger-ldv-4w:
     sector: transport
-    hierarchy: leaf
+    hierarchy: aggregate
+    children: [passenger-ldv-4w-bev, passenger-ldv-4w-fcev, passenger-ldv-4w-gases, passenger-ldv-4w-hybrid, passenger-ldv-4w-liquids]
     variable_suffix: Pass|Road|LDV|Four Wheelers
     stock_unit: million veh
     inflow_unit: million veh
@@ -110,7 +111,8 @@ assets:
     aliases: []
   buses:
     sector: transport
-    hierarchy: leaf
+    hierarchy: aggregate
+    children: [buses-bev, buses-fcev, buses-gases, buses-liquids]
     variable_suffix: Pass|Road|Bus
     stock_unit: million veh
     inflow_unit: million veh
@@ -119,7 +121,8 @@ assets:
     aliases: []
   light-trucks:
     sector: transport
-    hierarchy: leaf
+    hierarchy: aggregate
+    children: [light-trucks-bev, light-trucks-fcev, light-trucks-gases, light-trucks-liquids]
     variable_suffix: Freight|Road|Light
     stock_unit: million veh
     inflow_unit: million veh
@@ -128,8 +131,179 @@ assets:
     aliases: []
   heavy-trucks:
     sector: transport
-    hierarchy: leaf
+    hierarchy: aggregate
+    children: [heavy-trucks-bev, heavy-trucks-fcev, heavy-trucks-gases, heavy-trucks-liquids]
     variable_suffix: Freight|Road|Heavy
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  passenger-ldv-4w-bev:
+    sector: transport
+    hierarchy: leaf
+    parent: passenger-ldv-4w
+    variable_suffix: Pass|Road|LDV|Four Wheelers|BEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 20
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: [cars-bev]
+  passenger-ldv-4w-fcev:
+    sector: transport
+    hierarchy: leaf
+    parent: passenger-ldv-4w
+    variable_suffix: Pass|Road|LDV|Four Wheelers|FCEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 20
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: [cars-fcev]
+  passenger-ldv-4w-gases:
+    sector: transport
+    hierarchy: leaf
+    parent: passenger-ldv-4w
+    variable_suffix: Pass|Road|LDV|Four Wheelers|Gases
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 20
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: [cars-gases]
+  passenger-ldv-4w-hybrid:
+    sector: transport
+    hierarchy: leaf
+    parent: passenger-ldv-4w
+    variable_suffix: Pass|Road|LDV|Four Wheelers|Hybrid electric
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 20
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: [cars-hybrid]
+  passenger-ldv-4w-liquids:
+    sector: transport
+    hierarchy: leaf
+    parent: passenger-ldv-4w
+    variable_suffix: Pass|Road|LDV|Four Wheelers|Liquids
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 20
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: [cars-liquids]
+  buses-bev:
+    sector: transport
+    hierarchy: leaf
+    parent: buses
+    variable_suffix: Pass|Road|Bus|BEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  buses-fcev:
+    sector: transport
+    hierarchy: leaf
+    parent: buses
+    variable_suffix: Pass|Road|Bus|FCEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  buses-gases:
+    sector: transport
+    hierarchy: leaf
+    parent: buses
+    variable_suffix: Pass|Road|Bus|Gases
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  buses-liquids:
+    sector: transport
+    hierarchy: leaf
+    parent: buses
+    variable_suffix: Pass|Road|Bus|Liquids
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  light-trucks-bev:
+    sector: transport
+    hierarchy: leaf
+    parent: light-trucks
+    variable_suffix: Freight|Road|Light|BEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  light-trucks-fcev:
+    sector: transport
+    hierarchy: leaf
+    parent: light-trucks
+    variable_suffix: Freight|Road|Light|FCEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  light-trucks-gases:
+    sector: transport
+    hierarchy: leaf
+    parent: light-trucks
+    variable_suffix: Freight|Road|Light|Gases
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  light-trucks-liquids:
+    sector: transport
+    hierarchy: leaf
+    parent: light-trucks
+    variable_suffix: Freight|Road|Light|Liquids
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  heavy-trucks-bev:
+    sector: transport
+    hierarchy: leaf
+    parent: heavy-trucks
+    variable_suffix: Freight|Road|Heavy|BEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  heavy-trucks-fcev:
+    sector: transport
+    hierarchy: leaf
+    parent: heavy-trucks
+    variable_suffix: Freight|Road|Heavy|FCEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  heavy-trucks-gases:
+    sector: transport
+    hierarchy: leaf
+    parent: heavy-trucks
+    variable_suffix: Freight|Road|Heavy|Gases
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  heavy-trucks-liquids:
+    sector: transport
+    hierarchy: leaf
+    parent: heavy-trucks
+    variable_suffix: Freight|Road|Heavy|Liquids
     stock_unit: million veh
     inflow_unit: million veh
     service_life: 15

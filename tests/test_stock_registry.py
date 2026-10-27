@@ -10,13 +10,14 @@ from iam_preprocessor.stock_registry import (
 )
 
 
-def test_asset_registry_contains_only_named_leaf_mappings():
+def test_asset_registry_contains_named_hierarchy_mappings():
     registry, _ = load_remind_asset_registry()
     assets = registry["assets"]
     assert {row["sector"] for row in assets.values()} == {"power", "transport"}
-    assert all(row["hierarchy"] == "leaf" for row in assets.values())
+    assert {row["hierarchy"] for row in assets.values()} == {"leaf", "aggregate"}
     assert assets["pv"]["stock_suffix"] == "Solar|+|PV"
     assert assets["passenger-ldv-4w"]["service_life"] == 20
+    assert assets["passenger-ldv-4w-bev"]["parent"] == "passenger-ldv-4w"
     assert registry_provenance()["asset_mapping"]["sha256"]
 
 

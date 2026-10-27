@@ -11,6 +11,16 @@ from .exceptions import DataValidationError
 from .io import sha256_file
 
 DATA = Path(__file__).parent / "data"
+ASSET_SECTORS = {
+    "carbon_management",
+    "gases",
+    "heat",
+    "hydrogen",
+    "liquids",
+    "power",
+    "storage",
+    "transport",
+}
 
 
 def _load(name):
@@ -28,12 +38,27 @@ def load_remind_asset_registry():
         raise DataValidationError("REMIND asset registry is empty.")
     aliases = set()
     for asset_id, asset in assets.items():
-        if asset.get("sector") not in {"power", "transport"} or asset.get("hierarchy") != "leaf":
+        hierarchy = asset.get("hierarchy")
+        if asset.get("sector") not in ASSET_SECTORS or hierarchy not in {"leaf", "aggregate"}:
             raise DataValidationError(f"Invalid REMIND asset mapping: {asset_id}")
+        if hierarchy == "aggregate" and not asset.get("children"):
+            raise DataValidationError(f"Aggregate REMIND asset has no children: {asset_id}")
+        if hierarchy == "leaf" and asset.get("children"):
+            raise DataValidationError(f"Leaf REMIND asset has children: {asset_id}")
         names = [asset_id, *asset.get("aliases", [])]
         if aliases.intersection(names):
             raise DataValidationError(f"Duplicate REMIND asset id or alias: {asset_id}")
         aliases.update(names)
+    for asset_id, asset in assets.items():
+        parent = asset.get("parent")
+        if parent is not None:
+            if parent not in assets or asset_id not in assets[parent].get("children", []):
+                raise DataValidationError(f"Invalid parent for REMIND asset: {asset_id}")
+            if assets[parent].get("sector") != asset.get("sector"):
+                raise DataValidationError(f"Cross-sector parent for REMIND asset: {asset_id}")
+        for child in asset.get("children", []):
+            if child not in assets or assets[child].get("parent") != asset_id:
+                raise DataValidationError(f"Invalid child for REMIND asset: {asset_id}/{child}")
     return registry, path
 
 
