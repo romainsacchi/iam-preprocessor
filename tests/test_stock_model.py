@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from iam_preprocessor.exceptions import DataValidationError
-from iam_preprocessor.stock_model import reconstruct, survival_matrix
+from iam_preprocessor.stock_model import reconstruct, reconstruct_stock_flow, survival_matrix
 
 
 def run(*, years, initial, means=3, targets, mode="stock", exit_policy="error", ref=None):
@@ -150,3 +150,60 @@ def test_zero_stock_and_restart():
     )
     np.testing.assert_allclose(r.stock.sum(axis=1), [1, 0, 2])
     assert r.inflow[-1] == 2
+
+
+def test_stock_flow_preserves_reported_additions_and_allocates_oldest_first():
+    years = np.arange(2019, 2023)
+    sf = survival_matrix(years, np.full(4, 100), distribution="fixed")
+    result = reconstruct_stock_flow(
+        years=years,
+        reference_year=2020,
+        initial=[4, 6, 0, 0],
+        survival=sf,
+        stock_targets=[10, 9, 10],
+        inflow_targets=[0, 2, 1],
+        exit_policy="oldest_first",
+    )
+    np.testing.assert_allclose(result.stock.sum(axis=1), [10, 9, 10])
+    np.testing.assert_allclose(result.inflow[1:], [2, 1])
+    np.testing.assert_allclose(result.additional_exit[1:], [3, 0])
+    assert result.additional_exit_by_cohort[1, 0] == 3
+    assert result.additional_exit_by_cohort[1, 2] == 0
+
+
+def test_stock_flow_fails_instead_of_inventing_inflow_or_retiring_new_assets():
+    years = np.arange(2020, 2022)
+    sf = survival_matrix(years, np.full(2, 100), distribution="fixed")
+    common = dict(
+        years=years,
+        reference_year=2020,
+        initial=[10, 0],
+        survival=sf,
+        inflow_targets=[0, 1],
+    )
+    with pytest.raises(DataValidationError, match="cannot balance"):
+        reconstruct_stock_flow(**common, stock_targets=[10, 12])
+    with pytest.raises(DataValidationError, match="surviving opening stock"):
+        reconstruct_stock_flow(**common, stock_targets=[10, 0], exit_policy="proportional")
+    with pytest.raises(DataValidationError, match="select an explicit allocation"):
+        reconstruct_stock_flow(**common, stock_targets=[10, 10], exit_policy="error")
+
+
+def test_stock_flow_hazard_weighted_and_observed_exit_allocations():
+    years = np.arange(2019, 2022)
+    sf = survival_matrix(years, np.full(3, 10), distribution="remind")
+    common = dict(
+        years=years,
+        reference_year=2020,
+        initial=[5, 5, 0],
+        survival=sf,
+        stock_targets=[10, 8],
+        inflow_targets=[0, 0],
+    )
+    weighted = reconstruct_stock_flow(**common, exit_policy="hazard_weighted")
+    assert weighted.additional_exit_by_cohort[1, 0] > weighted.additional_exit_by_cohort[1, 1]
+    required = weighted.additional_exit[1]
+    observations = np.zeros((2, 3))
+    observations[1, 1] = required
+    observed = reconstruct_stock_flow(**common, exit_policy="observed", observed_exits=observations)
+    assert observed.additional_exit_by_cohort[1, 1] == pytest.approx(required)

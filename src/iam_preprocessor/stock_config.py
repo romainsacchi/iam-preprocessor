@@ -108,8 +108,8 @@ def load_stock_config(path):
         units_by_id[asset["id"]] = units
         if asset["inflow"]["unit"] not in {asset["stock"]["unit"], asset["stock"]["unit"] + "/yr"}:
             raise DataValidationError("Stock and inflow units must use the same quantity scale.")
-        if asset["mode"] not in ("stock", "inflow", "joint"):
-            raise DataValidationError("mode must be stock, inflow or joint.")
+        if asset["mode"] not in ("stock", "inflow", "stock_flow", "joint"):
+            raise DataValidationError("mode must be stock, inflow, stock_flow or joint.")
         if asset["mode"] == "joint":
             annual = asset.get("annualisation")
             fields(
@@ -122,8 +122,15 @@ def load_stock_config(path):
             nonempty(annual["provenance"], "annualisation provenance")
         elif "annualisation" in asset:
             raise DataValidationError("annualisation configuration requires joint mode.")
-        if asset["exit_policy"] not in ("error", "proportional"):
-            raise DataValidationError("exit_policy must be error or proportional.")
+        if asset["exit_policy"] not in (
+            "error",
+            "proportional",
+            "oldest_first",
+            "hazard_weighted",
+        ):
+            raise DataValidationError(
+                "exit_policy must be error, proportional, oldest_first or hazard_weighted."
+            )
         if asset["mode"] == "inflow" and asset["exit_policy"] != "error":
             raise DataValidationError(
                 "Inflow mode has no inferred additional exits; use exit_policy: error."

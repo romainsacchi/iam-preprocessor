@@ -104,15 +104,8 @@ def _common_asset(asset_id, region, stock, inflow, lifetime, maximum_age):
             "provenance": "Stationary historical-inflow prior at the first scenario year; "
             "no region-specific opening vintage observations were supplied.",
         },
-        "mode": "joint",
-        "exit_policy": "proportional",
-        "annualisation": {
-            "inflow_constraints": "penalized",
-            "reference_weight": 0.01,
-            "inflow_weight": 10,
-            "provenance": "Exact installed-stock anchors with annual Cap/New Cap or Stock/Sales "
-            "samples used as inflow evidence. Conflicts are retained as reported residuals.",
-        },
+        "mode": "stock_flow",
+        "exit_policy": "error",
         "service_weighting": {
             "kind": "equal",
             "annual_age_decay": 0,

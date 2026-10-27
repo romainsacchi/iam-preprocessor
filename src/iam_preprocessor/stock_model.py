@@ -25,6 +25,59 @@ class CohortResult:
     natural_exit: np.ndarray
     additional_exit: np.ndarray
     balance: np.ndarray
+    natural_exit_by_cohort: np.ndarray | None = None
+    additional_exit_by_cohort: np.ndarray | None = None
+
+
+EXIT_POLICIES = {"error", "proportional", "oldest_first", "hazard_weighted", "observed"}
+
+
+def _allocate_additional_exit(amount, survivors, policy, *, hazard=None, observed=None):
+    """Allocate an additional exit without retiring the current year's entries."""
+    tolerance = 1e-10 * max(1.0, float(survivors.sum()))
+    if amount <= tolerance:
+        return np.zeros_like(survivors)
+    if amount > survivors.sum() + tolerance:
+        raise DataValidationError("Additional exits exceed the naturally surviving opening stock.")
+    if policy == "error":
+        raise DataValidationError(
+            f"Stock and inflow targets require {amount:g} additional exits; "
+            "select an explicit allocation policy or revise the inputs."
+        )
+    if policy == "observed":
+        if observed is None:
+            raise DataValidationError("Observed exit allocation requires cohort observations.")
+        allocated = np.asarray(observed, dtype=float)
+        if (
+            allocated.shape != survivors.shape
+            or not np.isfinite(allocated).all()
+            or (allocated < 0).any()
+            or (allocated > survivors + tolerance).any()
+            or not np.isclose(allocated.sum(), amount, rtol=1e-9, atol=tolerance)
+        ):
+            raise DataValidationError("Observed cohort exits do not match the required exits.")
+        return allocated
+    if policy == "oldest_first":
+        allocated = np.zeros_like(survivors)
+        remaining = amount
+        for index in np.flatnonzero(survivors > 0):
+            allocated[index] = min(survivors[index], remaining)
+            remaining -= allocated[index]
+            if remaining <= tolerance:
+                break
+        return allocated
+    weights = survivors.copy()
+    if policy == "hazard_weighted":
+        if hazard is None:
+            raise DataValidationError("Hazard-weighted exits require cohort hazards.")
+        weights *= np.asarray(hazard, dtype=float)
+        if weights.sum() <= tolerance:
+            raise DataValidationError(
+                "Hazard-weighted exits are undefined when all hazards are zero."
+            )
+    if policy != "proportional" and policy != "hazard_weighted":
+        raise DataValidationError(f"Unknown additional-exit policy: {policy}")
+    return amount * weights / weights.sum()
 
 
 def survival_matrix(years, lifetimes, *, distribution, shape=None, conditional_year=None):
@@ -139,31 +192,37 @@ def reconstruct(*, years, reference_year, initial, survival, targets, mode, exit
         raise DataValidationError(
             "Initial stock contains cohorts impossible under the lifetime law."
         )
-    if mode not in {"stock", "inflow"} or exit_policy not in {"error", "proportional"}:
+    if mode not in {"stock", "inflow"} or exit_policy not in EXIT_POLICIES - {"observed"}:
         raise DataValidationError("Unknown reconstruction mode or exit policy.")
     stock = np.zeros((n - ref, n))
     stock[0] = initial
     inflow, natural, additional, balance = [np.full(n - ref, np.nan) for _ in range(4)]
+    natural_by_cohort = np.full_like(stock, np.nan)
+    additional_by_cohort = np.full_like(stock, np.nan)
     if mode == "stock" and not np.isclose(initial.sum(), targets[0], rtol=1e-10, atol=1e-12):
         raise DataValidationError("Initial stock does not match the reference target.")
     for i in range(ref + 1, n):
         j = i - ref
         ratio = np.divide(survival[i], survival[i - 1], out=np.zeros(n), where=survival[i - 1] > 0)
         survivors = stock[j - 1] * ratio
-        natural[j] = stock[j - 1].sum() - survivors.sum()
+        natural_by_cohort[j] = stock[j - 1] - survivors
+        natural[j] = natural_by_cohort[j].sum()
         additional[j] = 0.0
+        additional_by_cohort[j] = 0.0
         if mode == "inflow":
             inflow[j] = targets[j]
         else:
             change = targets[j] - survivors.sum()
             if change < 0:
-                if exit_policy == "error":
-                    raise DataValidationError(
-                        f"Stock target in {years[i]} requires {-change:g} additional exits; "
-                        "select proportional exits explicitly or revise the assumptions."
-                    )
-                additional[j] = -change
-                survivors *= targets[j] / survivors.sum()
+                allocated = _allocate_additional_exit(
+                    -change,
+                    survivors,
+                    exit_policy,
+                    hazard=1 - ratio,
+                )
+                additional_by_cohort[j] = allocated
+                additional[j] = allocated.sum()
+                survivors -= allocated
                 inflow[j] = 0.0
             else:
                 inflow[j] = change
@@ -172,4 +231,120 @@ def reconstruct(*, years, reference_year, initial, survival, targets, mode, exit
         balance[j] = stock[j - 1].sum() + inflow[j] - natural[j] - additional[j] - stock[j].sum()
     if not np.allclose(balance[1:], 0, rtol=0, atol=1e-10 * max(1, stock.max())):
         raise DataValidationError("Cohort stock balance did not close.")
-    return CohortResult(years[ref:], years, stock, inflow, natural, additional, balance)
+    return CohortResult(
+        years[ref:],
+        years,
+        stock,
+        inflow,
+        natural,
+        additional,
+        balance,
+        natural_by_cohort,
+        additional_by_cohort,
+    )
+
+
+def reconstruct_stock_flow(
+    *,
+    years,
+    reference_year,
+    initial,
+    survival,
+    stock_targets,
+    inflow_targets,
+    exit_policy="error",
+    observed_exits=None,
+):
+    """Preserve both stock and inflow series, inferring only explicit extra exits.
+
+    The current year's additions enter at year end and cannot be retired in that
+    same year. A target above natural survivors plus reported additions is
+    therefore infeasible rather than repaired with an unreported balancing flow.
+    """
+    years = np.asarray(years, dtype=int)
+    initial = np.asarray(initial, dtype=float)
+    survival = np.asarray(survival, dtype=float)
+    stock_targets = np.asarray(stock_targets, dtype=float)
+    inflow_targets = np.asarray(inflow_targets, dtype=float)
+    if reference_year not in years or len(years) < 2 or not np.all(np.diff(years) == 1):
+        raise DataValidationError(
+            "Cohort years must be consecutive and include the reference year."
+        )
+    ref = int(np.flatnonzero(years == reference_year)[0])
+    rows, n = len(years) - ref, len(years)
+    if (
+        initial.shape != (n,)
+        or survival.shape != (n, n)
+        or stock_targets.shape != (rows,)
+        or inflow_targets.shape != (rows,)
+    ):
+        raise DataValidationError("Inconsistent stock-flow reconstruction dimensions.")
+    if any(
+        not values.size or not np.isfinite(values).all() or (values < 0).any()
+        for values in (initial, survival, stock_targets, inflow_targets)
+    ):
+        raise DataValidationError("Stock-flow inputs must be finite and nonnegative.")
+    if exit_policy not in EXIT_POLICIES:
+        raise DataValidationError(f"Unknown additional-exit policy: {exit_policy}")
+    if not np.isclose(initial.sum(), stock_targets[0], rtol=1e-10, atol=1e-12):
+        raise DataValidationError("Initial stock does not match the reference target.")
+    if initial[ref + 1 :].any() or np.any((initial > 0) & (survival[ref] <= 0)):
+        raise DataValidationError("Initial stock contains future or impossible cohorts.")
+    stock = np.zeros((rows, n))
+    stock[0] = initial
+    inflow = np.full(rows, np.nan)
+    natural = np.full(rows, np.nan)
+    additional = np.full(rows, np.nan)
+    balance = np.full(rows, np.nan)
+    natural_by_cohort = np.full_like(stock, np.nan)
+    additional_by_cohort = np.full_like(stock, np.nan)
+    observations = None if observed_exits is None else np.asarray(observed_exits, dtype=float)
+    if observations is not None and observations.shape != stock.shape:
+        raise DataValidationError("Observed exit matrix has inconsistent dimensions.")
+    for i in range(ref + 1, n):
+        row = i - ref
+        ratio = np.divide(survival[i], survival[i - 1], out=np.zeros(n), where=survival[i - 1] > 0)
+        survivors = stock[row - 1] * ratio
+        natural_by_cohort[row] = stock[row - 1] - survivors
+        natural[row] = natural_by_cohort[row].sum()
+        inflow[row] = inflow_targets[row]
+        available = survivors.sum() + inflow[row]
+        required_exit = available - stock_targets[row]
+        tolerance = 1e-10 * max(1.0, available, stock_targets[row])
+        if required_exit < -tolerance:
+            raise DataValidationError(
+                f"Stock target in {years[i]} exceeds natural survivors plus reported additions "
+                f"by {-required_exit:g}; a closed stock-flow model cannot balance it."
+            )
+        required_exit = max(0.0, required_exit)
+        allocated = _allocate_additional_exit(
+            required_exit,
+            survivors,
+            exit_policy,
+            hazard=1 - ratio,
+            observed=None if observations is None else observations[row],
+        )
+        additional_by_cohort[row] = allocated
+        additional[row] = allocated.sum()
+        stock[row] = survivors - allocated
+        stock[row, i] = inflow[row]
+        balance[row] = (
+            stock[row - 1].sum() + inflow[row] - natural[row] - additional[row] - stock[row].sum()
+        )
+    if not np.allclose(stock.sum(axis=1), stock_targets, rtol=1e-9, atol=1e-10):
+        raise DataValidationError(
+            "Strict stock-flow reconstruction did not preserve stock targets."
+        )
+    if not np.allclose(balance[1:], 0, rtol=0, atol=1e-10 * max(1, stock.max())):
+        raise DataValidationError("Strict stock-flow reconstruction did not close.")
+    return CohortResult(
+        years[ref:],
+        years,
+        stock,
+        inflow,
+        natural,
+        additional,
+        balance,
+        natural_by_cohort,
+        additional_by_cohort,
+    )

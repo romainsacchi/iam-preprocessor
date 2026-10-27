@@ -343,6 +343,8 @@ def reconstruct_joint(
     stock = np.zeros_like(baseline.stock)
     stock[0] = baseline.stock[0]
     natural, additional, balance = [np.full(n, np.nan) for _ in range(3)]
+    natural_by_cohort = np.full_like(stock, np.nan)
+    additional_by_cohort = np.full_like(stock, np.nan)
     for t in range(1, n):
         ratio = np.divide(
             survival[ref + t],
@@ -351,8 +353,10 @@ def reconstruct_joint(
             where=survival[ref + t - 1] > 0,
         )
         survivors = stock[t - 1] * ratio
-        natural[t] = stock[t - 1].sum() - survivors.sum()
-        additional[t] = survivors.sum() * (1 - retention[t])
+        natural_by_cohort[t] = stock[t - 1] - survivors
+        natural[t] = natural_by_cohort[t].sum()
+        additional_by_cohort[t] = survivors * (1 - retention[t])
+        additional[t] = additional_by_cohort[t].sum()
         stock[t] = survivors * retention[t]
         stock[t, ref + t] = inflows[t - 1]
         balance[t] = (
@@ -395,5 +399,13 @@ def reconstruct_joint(
         fitted_curvature_l2=float(np.linalg.norm(np.diff(inflows, n=2))),
     )
     return CohortResult(
-        years, cohorts, stock, np.r_[np.nan, inflows], natural, additional, balance
+        years,
+        cohorts,
+        stock,
+        np.r_[np.nan, inflows],
+        natural,
+        additional,
+        balance,
+        natural_by_cohort,
+        additional_by_cohort,
     ), diagnostics

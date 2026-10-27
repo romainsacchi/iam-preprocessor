@@ -309,6 +309,30 @@ def test_inflow_mode_reports_stock_residual_and_does_not_enforce_stock(inputs):
     assert diagnostics[0]["maximum_absolute_stock_residual"] > 0
 
 
+def test_strict_stock_flow_mode_preserves_both_input_series(inputs):
+    frame, config, path, _ = inputs
+    frame.loc[frame.Variable.eq("Stock|Cars"), ["2020", "2025", "2030"]] = [10, 15, 20]
+    frame.loc[frame.Variable.eq("Sales|Cars"), ["2020", "2025", "2030"]] = [1, 1, 1]
+    asset = config["assets"][0]
+    asset.update(mode="stock_flow", exit_policy="error")
+    asset["lifetime"] = {
+        "distribution": "fixed",
+        "initial_mean": 100,
+        "mean": 100,
+        "interpretation": "test",
+        "provenance": "test",
+    }
+    path.write_text(yaml.safe_dump(config))
+    enriched, diagnostics = enrich_stock_vintages(frame, load_stock_config(path))
+    values = enriched.set_index("Variable")
+    np.testing.assert_allclose(
+        values.loc[PREFIX + "cars|Stock", [str(y) for y in range(2020, 2031)]].to_numpy(float),
+        np.arange(10, 21),
+    )
+    assert diagnostics[0]["maximum_absolute_stock_residual"] < 1e-12
+    assert diagnostics[0]["maximum_absolute_inflow_residual"] < 1e-12
+
+
 def test_new_cohort_exposure_changes_service_only(inputs):
     frame, _, path, _ = inputs
     config = load_stock_config(path)

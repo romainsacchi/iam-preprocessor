@@ -14,7 +14,7 @@ from .filtering import filter_variables
 from .io import read_frame, sha256_file, validate_frame, write_csv_atomic, year_columns
 from .report import ProcessingReport
 from .stock_config import load_stock_config
-from .stock_model import reconstruct, survival_matrix
+from .stock_model import reconstruct, reconstruct_stock_flow, survival_matrix
 
 PREFIX = "Stock Vintage|v1|"
 
@@ -156,15 +156,26 @@ def _asset_result(frame, asset, reference_year, end_year):
         initial *= stock_targets[0] / initial.sum()
     else:
         initial[:] = 0
-    result = reconstruct(
-        years=years,
-        reference_year=reference_year,
-        initial=initial,
-        survival=sf,
-        targets=flows if asset["mode"] == "inflow" else stock_targets,
-        mode="inflow" if asset["mode"] == "inflow" else "stock",
-        exit_policy="proportional" if asset["mode"] == "joint" else asset["exit_policy"],
-    )
+    if asset["mode"] == "stock_flow":
+        result = reconstruct_stock_flow(
+            years=years,
+            reference_year=reference_year,
+            initial=initial,
+            survival=sf,
+            stock_targets=stock_targets,
+            inflow_targets=flows,
+            exit_policy=asset["exit_policy"],
+        )
+    else:
+        result = reconstruct(
+            years=years,
+            reference_year=reference_year,
+            initial=initial,
+            survival=sf,
+            targets=flows if asset["mode"] == "inflow" else stock_targets,
+            mode="inflow" if asset["mode"] == "inflow" else "stock",
+            exit_policy="proportional" if asset["mode"] == "joint" else asset["exit_policy"],
+        )
     joint_diagnostics = None
     if asset["mode"] == "joint":
         from .stock_annualisation import reconstruct_joint

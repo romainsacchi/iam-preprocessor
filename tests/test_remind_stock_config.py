@@ -43,6 +43,8 @@ def test_builds_individual_region_power_and_transport_assets(tmp_path):
     }
     assert skipped
     power = next(a for a in config["assets"] if a["id"] == "pv")
+    assert power["mode"] == "stock_flow"
+    assert power["exit_policy"] == "error"
     assert power["inflow_timing"]["kind"] == "sampled_annual"
     assert power["lifetime"] == {
         "distribution": "remind",
