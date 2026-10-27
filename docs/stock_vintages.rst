@@ -10,6 +10,8 @@ reproduction commands are in ``docs/remind-sector-expansion.md``.
 
 .. code-block:: console
 
+   iam-preprocessor remind-stock-config scenario.mif -o stocks.yaml \
+     --region DEU --region FRA --region UKI
    iam-preprocessor stock-vintages scenario.mif --config stocks.yaml -o output/stocks
 
 The command reads one model/scenario per file, checks exact variable names and
@@ -26,7 +28,8 @@ the reference year. In stock mode, additional exits either raise an error or
 follow an explicitly selected proportional-exit assumption.
 
 Joint mode preserves original stock anchors while fitting smooth annual additions.
-Sampled annual sales and period-average additions have different constraints.
+REMIND ``New Cap`` and ``Sales`` are sampled annual values and are linearly
+interpolated. Generic period-average additions have different constraints.
 Strict mode rejects conflicting inflows; an explicit penalized policy reports
 their discrepancies. Fixed extra-exit fractions and full reporting windows remain
 visible in the report. The method and YAML options are documented in

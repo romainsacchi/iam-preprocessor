@@ -6,11 +6,16 @@ observations. It does not require additional REMIND team data. The existing BEV,
 heavy-truck, PV and CCGT profiles remain available; seven groups are added below.
 The catalogue is in `examples/run_remind_sector_expansion.py`.
 
+The numerical results quoted below describe the archived campaign produced before
+the documented REMIND maximum-lifetime law, annual-sample interpretation of
+`New Cap`, and disclosed vehicle `serviceLife` values were implemented. Regenerate
+the campaign before treating those figures as results of the current code.
+
 ## Added groups and data
 
-| Asset ID | Region | Native stock / additions suffix after `Electricity` | Initial composition | Mean lifetime prior |
+| Asset ID | Region | Native stock / additions suffix after `Electricity` | Initial composition | Lifetime input |
 |---|---|---|---|---|
-| `passenger-liquids` | EUR | `Stock` / `Sales` of `Transport\|Pass\|Road\|LDV\|Four Wheelers\|Liquids` | UK DfT VEH1111, petrol + diesel cars, 2022 Q4, first-use year | 16 years |
+| `passenger-liquids` | EUR | `Stock` / `Sales` of `Transport\|Pass\|Road\|LDV\|Four Wheelers\|Liquids` | UK DfT VEH1111, petrol + diesel cars, 2022 Q4, first-use year | REMIND serviceLife 20 years; assumed Weibull shape 3 |
 | `wind-onshore` | USA | `Wind\|+\|Onshore` | US EIA-860 operating onshore generator MW by operating year | 25 years |
 | `wind-offshore` | USA | `Wind\|+\|Offshore` | US EIA-860 operating offshore generator MW by operating year | 25 years |
 | `nuclear` | USA | `+\|Nuclear` | US EIA-860 operating nuclear generator MW by operating year | 50 years |
@@ -24,9 +29,10 @@ Gas-turbine service has the different suffix `Gas|++|Gas Turbine`; lifetime uses
 `Tech|Electricity|Gas|Gas Turbine|Lifetime`. All selectors and units are checked
 exactly. Vehicle service is `ES|Transport|Pass|Road|LDV|Four Wheelers|Liquids`
 (billion pkm/yr); stock and sampled annual sales use the native `million veh` unit.
-Power lifetime series are reinterpreted as Weibull mean priors, with shape 3;
-this is not an assertion that REMIND uses that retirement law. The vehicle prior
-is an explicit modelling assumption. No aggregate and its children are summed.
+Power lifetime series are maximum lifetimes under REMIND's documented survival
+`max(0, 1-(age/tau)^4)`; the associated mean is `4*tau/5`. Depreciation represents
+dismantlement rather than efficiency loss. The vehicle prior remains a separate
+explicit modelling assumption. No aggregate and its children are summed.
 
 The UK data source is [DfT VEH1111](https://www.gov.uk/government/statistical-data-sets/vehicle-licensing-statistics-data-tables).
 Use the archived ODS numeric values rather than rounded display strings. Known
@@ -74,9 +80,9 @@ sparse observed age shape is especially uncertain. The liquid-car factor of
 ## Annualisation, survival and service
 
 The [joint annualisation method](joint-stock-annualisation.md) is retained.
-Native stock anchors are hard constraints. Annual vehicle sales are sampled
-rates; power additions are five-year reporting-window means. Solve full windows,
-including the internal 2051–2052 years, before exporting through 2050. A penalized
+Native stock anchors are hard constraints. Annual vehicle sales and power
+`New Cap` values are sampled annual rates and missing years are linearly
+interpolated. A penalized
 policy reconciles incompatible inflow observations and reports every residual;
 no claim is made that all stock and inflow observations can be met simultaneously.
 Additional-exit fractions are fixed from the linear-stock baseline, proportional
@@ -87,7 +93,7 @@ observations, and no smoothing is applied to the final plotted distributions.
 Rare observed old vehicles can have a mathematically positive Weibull survival
 probability below floating-point precision. Conditional survival now uses
 `exp(-(H(age) - H(reference_age)))`, rather than dividing two absolute survival
-probabilities. Observed 1900-era cars are retained, including in the 12-year
+probabilities. Observed 1900-era cars are retained, including in the short-life
 short-life sensitivity. Historical entries are not reconstructed from those
 survivors. This numerical treatment does not establish that the same lifetime
 law adequately describes collector vehicles. Impossible fixed-lifetime cohorts
@@ -103,7 +109,7 @@ primary-case failure, selector error or numerical solver failure aborts the run.
 SLSQP convergence may be refined once if an independent convex optimality check
 fails; stock conservation and KKT tolerances are never relaxed.
 
-Each new group includes primary, linear-stock, inflow-only, ±25% mean lifetime,
+Each new group includes primary, linear-stock, inflow-only, ±25% maximum lifetime,
 and low/high inflow-penalty cases. Existing groups retain their original broader
 sensitivity set. Scenario stock/service changes and lifetime assumptions do not
 by themselves change the inventory's total capital-production coefficient:

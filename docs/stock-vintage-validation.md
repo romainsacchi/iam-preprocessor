@@ -15,16 +15,18 @@ its old future projections are not inputs to the new reconstruction.
 
 | Group | Existing inputs used | Explicit reconstruction choice | Remaining uncertainty |
 | --- | --- | --- | --- |
-| Passenger BEVs, EUR | REMIND Four Wheelers BEV stock/sales/service; UK 2022 first-use cohorts | Weibull mean 16 years, shape 3 as an explicit prior; equal service initially; stock- and inflow-driven cases | UK-to-EUR composition transfer; first use versus manufacture; unknown/old cohorts retained only as curated; true survival and mileage by age |
-| Heavy trucks, EUR | REMIND liquid-fuel 40-tonne stock/sales/service; UK articulated diesel 32–40 t cohorts | Weibull mean 12 years, shape 3 as a prior; equal service initially | Weight/fuel crosswalk, mileage/payload/empty running, older/unknown registration dates, territorial exits versus disposal |
-| PV, USA | REMIND PV capacity/new capacity/generation/lifetime; selected US-WECC crystalline plant cohorts and output | Technical-life variable used as a declared Weibull-mean prior; shape 3; initial observed output/capacity factors | Technical life is not empirical mean survival; regional/system/AC–DC boundary; future degradation and curtailment allocation |
-| CCGT, USA | REMIND unabated combined-cycle capacity/additions/generation/lifetime; selected non-CHP WECC blocks | Technical-life variable used as a declared Weibull-mean prior; shape 3; explicit proportional additional exits in stock mode | Dispatch, idle versus retired capacity, refurbished/old units and selective retirement; no gas-wide idle variable assigned to CCGT |
+| Passenger BEVs, EUR | REMIND Four Wheelers BEV stock/sales/service; UK 2022 first-use cohorts | REMIND serviceLife 20 years used as Weibull mean, with shape 3 an explicit non-REMIND assumption; equal service initially; stock- and inflow-driven cases | UK-to-EUR composition transfer; first use versus manufacture; unknown/old cohorts retained only as curated; true survival and mileage by age |
+| Heavy trucks, EUR | REMIND liquid-fuel 40-tonne stock/sales/service; UK articulated diesel 32–40 t cohorts | REMIND serviceLife 15 years used as Weibull mean, with shape 3 an explicit non-REMIND assumption; equal service initially | Weight/fuel crosswalk, mileage/payload/empty running, older/unknown registration dates, territorial exits versus disposal |
+| PV, USA | REMIND PV capacity/new capacity/generation/lifetime; selected US-WECC crystalline plant cohorts and output | Native REMIND maximum-lifetime survival `max(0, 1-(age/tau)^4)`; initial observed output/capacity factors | Regional/system/AC–DC boundary; future degradation and curtailment allocation |
+| CCGT, USA | REMIND unabated combined-cycle capacity/additions/generation/lifetime; selected non-CHP WECC blocks | Native REMIND maximum-lifetime survival; explicit proportional additional exits in stock mode | Dispatch, idle versus retired capacity, refurbished/old units and selective retirement; no gas-wide idle variable assigned to CCGT |
 | Water infrastructure | Existing Quebec pipe/storage observations and reviewed pilot | Keep separate external-data constant-stock scenario | No reviewed matching REMIND stock/additions series; no IAM-derived water forecast |
 
-The 16/12-year transport means are modelling priors, not the old 20/15-year
-support parameters renamed as means. Power's technical-life reinterpretation
-is similarly an assumption. Existing initial composition can make these useful
-conditional projections without establishing empirical validity of the priors.
+The 20/15-year transport values come from REMIND `serviceLife`; treating them as
+Weibull means with shape 3 remains a modelling assumption in this historical pilot.
+Power uses the documented REMIND maximum-lifetime law: the IAM value is `tau`,
+and its associated mean is `4*tau/5`. Existing initial composition can make these
+useful conditional projections without establishing empirical validity of the
+transport priors or the proxy initial cohorts.
 
 The initial implementation provided eight cases per IAM group: primary stock-driven,
 reported-inflow-driven, 25% shorter lifetime, 25% longer lifetime, equal service,

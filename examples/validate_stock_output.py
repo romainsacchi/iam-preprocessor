@@ -142,16 +142,18 @@ def validate(report_path):
                     )
             # Independent closed-form survival check, without the producer or flodym.
             law = config["lifetime"]
-            means = np.full(len(cohorts), law["initial_mean"], dtype=float)
+            parameter = "maximum" if law["distribution"] == "remind" else "mean"
+            initial_parameter = f"initial_{parameter}"
+            lifetimes = np.full(len(cohorts), law[initial_parameter], dtype=float)
             future = cohorts > years[0]
             if "source" in law:
-                means[future] = np.interp(
+                lifetimes[future] = np.interp(
                     cohorts[future],
                     list(map(int, columns)),
                     source_region.loc[law["source"]["variable"], columns].to_numpy(float),
                 )
             else:
-                means[future] = law["mean"]
+                lifetimes[future] = law[parameter]
             births = quantities[0].copy()
             births[future] = fit_inflows[cohorts[future] - years[0] - 1]
             fractions = dict(
@@ -161,12 +163,21 @@ def validate(report_path):
                 age = np.maximum(0, year - cohorts)
                 initial_age = np.maximum(0, years[0] - cohorts)
                 if law["distribution"] == "weibull":
-                    scale = means / gamma(1 + 1 / law["shape"])
+                    scale = lifetimes / gamma(1 + 1 / law["shape"])
                     surviving = np.exp(
                         -((age / scale) ** law["shape"] - (initial_age / scale) ** law["shape"])
                     )
+                elif law["distribution"] == "remind":
+                    raw = np.maximum(0, 1 - (age / lifetimes) ** 4)
+                    opening = np.maximum(0, 1 - (initial_age / lifetimes) ** 4)
+                    surviving = np.divide(
+                        raw,
+                        opening,
+                        out=np.zeros_like(raw),
+                        where=opening > 0,
+                    )
                 else:
-                    surviving = (age < means).astype(float)
+                    surviving = (age < lifetimes).astype(float)
                 remaining = np.array(
                     [
                         np.prod(

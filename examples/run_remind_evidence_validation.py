@@ -149,8 +149,16 @@ def historical_tests(history, panels, mappings, output, campaign):
             totals = {y: sum(history[asset, y]["cohorts"].values()) for y in range(ref, end + 1)}
             # The prediction function never receives the later cohort vectors.
             for method in ("prior", "no-retirement", "equilibrium"):
+                distribution = m.get("lifetime_distribution", "weibull")
+                lifetime = m.get("maximum_life", m.get("service_life", m.get("mean_life")))
                 predicted = conditional_history(
-                    initial, ref, totals, m["mean_life"], m["shape"], method=method
+                    initial,
+                    ref,
+                    totals,
+                    lifetime,
+                    m.get("shape", 3),
+                    distribution=distribution,
+                    method=method,
                 )
                 inputs.append(
                     dict(
@@ -253,7 +261,13 @@ def historical_tests(history, panels, mappings, output, campaign):
                     )
                 for method in ("prior", "no-retirement"):
                     prediction = opening_survival(
-                        a, ref, y, m["mean_life"], m["shape"], method=method
+                        a,
+                        ref,
+                        y,
+                        m.get("maximum_life", m.get("service_life", m.get("mean_life"))),
+                        m.get("shape", 3),
+                        distribution=m.get("lifetime_distribution", "weibull"),
+                        method=method,
                     )
                     metrics.append(
                         dict(

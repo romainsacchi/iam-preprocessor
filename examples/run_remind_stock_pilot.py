@@ -31,7 +31,7 @@ FILES = {
     "pv": "pv-npi2025-cohorts.json",
     "ccgt": "ccgt-npi-cohorts.json",
 }
-MEANS = {"passenger-bev": 16, "heavy-trucks": 12, "pv": 30, "ccgt": 35}
+LIFETIMES = {"passenger-bev": 20, "heavy-trucks": 15, "pv": 30, "ccgt": 35}
 ARCHIVE_MANIFEST_SHA256 = "c15467bdb209ece5c556248c16edc6257dae034dd121b9a6c935b4f5fe726231"
 CASES = (
     "primary",
@@ -96,33 +96,35 @@ def make_config(archive, output, end_year, annualisation="joint"):
         def selector(key, variables=variables):
             return dict(zip(("variable", "unit"), variables[key], strict=True))
 
-        mean = MEANS[asset]
-        law = {
-            "distribution": "weibull",
-            "initial_mean": mean,
-            "shape": 3,
-            "interpretation": "Assumed mean service life for a Weibull sensitivity; "
-            "not native REMIND survival",
-            "provenance": "Power: scenario technical life reinterpreted as a modelling prior. "
-            "Vehicles: explicit 16/12-year mean priors; not native EDGE lifetime parameters.",
-        }
-        law.update({"source": selector("lifetime")} if power else {"mean": mean})
-        timing = (
+        life = LIFETIMES[asset]
+        law = (
             {
-                "kind": "reported_periods",
-                "periods": [
-                    {"anchor": y, "start": y - 2, "end": y + 2} for y in range(2025, 2056, 5)
-                ],
-                "provenance": "Pinned remind2 reporter: five-year centred reported rates; "
-                "flat within-window expansion is assumed, not unique native annual investment.",
+                "distribution": "remind",
+                "initial_maximum": life,
+                "source": selector("lifetime"),
+                "interpretation": "REMIND maximum technical lifetime tau; survival is "
+                "max(0, 1 - (age / tau)^4), with mean lifetime 4*tau/5.",
+                "provenance": "Technical note: Lifetimes in REMIND (2026-03-23). "
+                "Depreciation represents dismantlement, not efficiency loss.",
             }
             if power
             else {
-                "kind": "sampled_annual",
-                "provenance": "Pinned reporttransport: sampled annual vehicle sales; "
-                "linear interpolation assumed.",
+                "distribution": "weibull",
+                "initial_mean": life,
+                "mean": life,
+                "shape": 3,
+                "interpretation": "REMIND transport serviceLife used as the mean of an assumed "
+                "Weibull distribution; shape 3 is not disclosed by REMIND.",
+                "provenance": "transportPol5cen FVvehvar serviceLife: LDV four-wheelers "
+                "20 years; heavy trucks 15 years. Interest rates are financial and excluded. "
+                "The survival shape remains an explicit pilot assumption.",
             }
         )
+        timing = {
+            "kind": "sampled_annual",
+            "provenance": "REMIND New Cap or Sales is the annual addition in the reported "
+            "year; missing annual values are linearly interpolated.",
+        }
         base = {
             "id": asset,
             "region": "USA" if power else "EUR",
@@ -182,7 +184,10 @@ def make_config(archive, output, end_year, annualisation="joint"):
             elif case in ("short-life", "long-life"):
                 factor = 0.75 if case == "short-life" else 1.25
                 item["lifetime"].pop("source", None)
-                item["lifetime"].update(mean=mean * factor, initial_mean=mean * factor)
+                if power:
+                    item["lifetime"].update(maximum=life * factor, initial_maximum=life * factor)
+                else:
+                    item["lifetime"].update(mean=life * factor, initial_mean=life * factor)
             elif case == "equal-service":
                 item["service_weighting"] = {
                     "kind": "equal",

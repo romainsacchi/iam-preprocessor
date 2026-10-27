@@ -2,7 +2,7 @@
 
 This optional `mode: joint` addresses steps in reconstructed vintage composition
 caused by piecewise-linear interpolation of IAM stock. It uses the same observed
-initial cohorts, flodym survival matrices and service-weighting contract as the
+initial cohorts, configured survival matrices and service-weighting contract as the
 existing `stock` and `inflow` modes. Regional composition proxies remain explicit
 accepted pilot assumptions. It does not smooth observed historical cohorts or
 post-process the final histograms.
@@ -11,13 +11,14 @@ post-process the final histograms.
 
 - **Stocks/capacities:** original IAM anchor years are exact constraints.
   Intermediate stocks emerge from surviving initial cohorts and annual additions.
-- **Sampled annual sales:** the reported years constrain annual entries at those
-  years. Interpolated sales supply a weak reference trajectory, not extra data.
+- **Sampled annual additions/sales:** the reported years constrain annual entries
+  at those years. Interpolated values supply a weak reference trajectory, not
+  extra data. This is the adopted REMIND `New Cap` and `Sales` interpretation.
 - **Reported period-average additions:** annual entries are constrained by the
   average over each explicit window. A 10 GW/year five-year observation therefore
   constrains 50 GW of additions, not 10 GW of additions in the reporting year.
   Ten-year windows constrain ten annual entries, with no assumed fixed step width.
-- **Lifetimes:** unchanged flodym conditional survival; historical initial stocks
+- **Lifetimes:** unchanged conditional survival under the configured lifetime law; historical initial stocks
   are survivors, not historic sales. Future lifetimes retain their cohort indexing.
 - **Additional exits:** `exit_policy: error` allows none. With `proportional`, the
   annual extra-exit fractions from the existing linear-stock reconstruction are
@@ -77,6 +78,10 @@ capacity into narrow spikes; it is a diagnostic, not the selected smooth fit.
 
 SLSQP solves the convex quadratic fit. The code checks stock/inflow residuals,
 nonnegativity and independent first-order stationarity/complementarity conditions.
+If equality constraints force bounded inflows exactly to zero and SLSQP reports a
+spurious incompatible-bound or KKT failure, HiGHS first proves which variables
+cannot be positive; only those columns are removed before retrying the same
+quadratic problem. Their indices are recorded in the report.
 It aborts on solver failure; a visually smooth plot does not count as validation.
 Curvature need not improve relative to the old stock-only baseline when newly
 enforcing observed sales samples introduces additional constraints.
@@ -104,10 +109,10 @@ validation. The `annualisation` block is rejected outside joint mode. Legacy
 ## Horizon and interval boundaries
 
 The internal solve includes the next stock anchor at/after the requested end
-year and completes all intersecting addition-reporting windows. For the reviewed
-2022–2050 power example, the final centered window runs through 2052. Its complete
-total is fitted before exporting only the requested 2022–2050 profiles; the full
-internal inflows are retained in the report for verification.
+year and completes any intersecting addition-reporting windows. REMIND `New Cap`
+and `Sales` are instead annual samples, so the reviewed pilot linearly interpolates
+their reference trajectory without inventing reporting windows. Full internal
+inflows are retained in the report for verification.
 
 A reporting window crossing the initial stock date is rejected because its
 historical additions are not supplied. Choose an earlier initial state or an
@@ -141,7 +146,7 @@ assumption is not clipped to conceal the failure.
 
 `annualisation-comparison.pdf` contains actual annual stock/addition paths and
 recomputed vintage distributions, with no cosmetic smoothing. Period observations
-are drawn as horizontal windows, not mistaken for point samples. Runtime variables,
+are drawn according to their declared sample/window semantics. Runtime variables,
 units, common-amortisation inventory coefficients and premise/TRAILS interfaces
 are unchanged. Producer hashes and the paired consumer checks remain required.
 

@@ -75,7 +75,7 @@ def render(directory):
             "onshore wind, offshore wind, nuclear, gas turbines, geothermal and CSP.",
             "",
             "Annual additions are fitted jointly with survival and native stock anchors.",
-            "Power investment rates represent reporting-window means, not point samples.",
+            "New Cap and Sales are annual samples; missing annual values are interpolated.",
             "Incompatible inflow observations are reconciled with explicit residuals.",
             "",
             "UK petrol/diesel first-use cohorts initialize the combined Liquids fleet.",
@@ -83,8 +83,8 @@ def render(directory):
             "New power cohorts use operating US EIA-860 generator capacity by operating year.",
             "CHP and non-operating generators are excluded; unknown dates remain audited.",
             "",
-            "Power technical lives are Weibull mean priors, not measured retirement laws.",
-            "New groups assume equal service per vehicle or GW. Lifetime: ±25% sensitivities.",
+            "Power uses REMIND maximum lives: survival=max(0, 1-(age/tau)^4).",
+            "New groups assume equal service per vehicle or GW. Maximum life: ±25% sensitivities.",
             "Composition timestamps existing production burdens; it does not change their total.",
             "",
             f"{len(configs)} accepted cases; {len(years) * len(configs):,} annual profiles.",
@@ -93,7 +93,7 @@ def render(directory):
             "Historical vehicle tail retained with numerically stable conditional survival.",
             "",
             "Scope limits: regional proxies, native category boundaries, repowering dates,",
-            "age-specific use, and within-period investment timing remain assumptions.",
+            "age-specific use and within-year investment timing remain assumptions.",
         ]
         fig.text(0.07, 0.85, "\n".join(lines), fontsize=11, va="top", linespacing=1.45)
         pdf.savefig(fig)
@@ -138,7 +138,7 @@ def render(directory):
                                 row["target_rate"],
                                 marker="x",
                                 color="black",
-                                label="reported annual sales" if i == 0 else None,
+                                label="reported annual rate" if i == 0 else None,
                             )
                         else:
                             ax.hlines(

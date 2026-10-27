@@ -106,7 +106,7 @@ def make_expanded_config(archive, output, end_year=2050):
             ):
                 base[role] = {"variable": variable, "unit": unit}
             base["lifetime"].update(
-                initial_mean=mean,
+                initial_maximum=mean,
                 source={"variable": f"Tech|Electricity|{lifetime}|Lifetime", "unit": "years"},
             )
             initial_text = "EIA-860 operating US generator nameplate capacity by operating year. "
@@ -114,7 +114,7 @@ def make_expanded_config(archive, output, end_year=2050):
             service_text = "Equal annual service per GW; no observed age-specific generation."
             observation_source = "eia8602022.zip"
         else:
-            mean = 16
+            mean = 20
             for role in ("stock", "inflow", "service"):
                 base[role]["variable"] = base[role]["variable"].removesuffix("BEV") + "Liquids"
             initial_text = "UK petrol plus diesel first-use-year composition is an EUR proxy. "
@@ -174,7 +174,10 @@ def make_expanded_config(archive, output, end_year=2050):
             elif case in ("short-life", "long-life"):
                 life = mean * (0.75 if case == "short-life" else 1.25)
                 item["lifetime"].pop("source", None)
-                item["lifetime"].update(initial_mean=life, mean=life)
+                if power:
+                    item["lifetime"].update(initial_maximum=life, maximum=life)
+                else:
+                    item["lifetime"].update(initial_mean=life, mean=life)
             elif case.startswith("inflow-penalty"):
                 item["annualisation"]["inflow_weight"] = 1 if case.endswith("low") else 100
             config["assets"].append(item)

@@ -8,6 +8,14 @@ The validation counts describe the completed 10 October campaign; they were not
 rerun for this documentation checkpoint. The current input/output audit and
 recovery gaps are recorded separately below.
 
+**Input-semantics update:** the numerical campaign summarized here used the former
+power Weibull reinterpretation and period-window treatment of `New Cap`. The
+producer and validation code now implement REMIND's documented maximum-lifetime
+survival `max(0, 1-(age/tau)^4)` and treat `New Cap` as annual samples with linear
+interpolation. Vehicle priors now use the disclosed 20/15-year `serviceLife`
+values. Therefore the archived metrics remain historical evidence and must be
+regenerated before they are attributed to the current implementation.
+
 Implemented on `feat/stock-evidence-validation`, from the frozen plan at
 `4eda2aa`. This completes priorities 1–3 for the eleven existing asset groups
 in SSP2-NPi2025. The earlier sector-expansion output remains the comparison
@@ -247,7 +255,7 @@ The workflow is:
 ```text
 original IAM stock/capacity + gross additions/sales + service + lifetime inputs
   + observed initial cohorts + explicit survival/utilisation assumptions
-  -> iam-preprocessor / flodym: annual cohort stocks and service shares
+  -> iam-preprocessor: annual cohort stocks and service shares
   -> enriched CSV and matching hashed JSON report, optional filtering/encryption
   -> premise: exact annual profile access and explicit inventory bindings
   -> TRAILS: dated manufacturing pulses, with stock_vintage=True
@@ -258,8 +266,8 @@ Preserve these decisions when restarting:
 - Reconstruct stocks using surviving initial cohorts and later inflows times
   their survival probabilities, with documented additional exits. A lifetime
   probability density is not a stock-age distribution. Initial observations
-  are survivors, not historical sales. Technical lifetime is not automatically
-  a measured mean survival time.
+  are survivors, not historical sales. REMIND energy-conversion lifetime is the
+  maximum `tau`: survival is `max(0, 1-(age/tau)^4)` and mean life is `4*tau/5`.
 - Keep stock shares and service shares separate. Service shares are proportional
   to surviving cohort quantities times cohort-specific utilisation. A common
   annual scaling to match aggregate generation/transport does not identify
@@ -275,12 +283,13 @@ Preserve these decisions when restarting:
 - Keep parent manufacture, replacement components, maintenance, occupation and
   disposal as separately assigned roles. Operating-stock exits do not establish
   physical disposal dates. Do not apply parent age profiles indiscriminately.
-- Joint annualisation preserves native stock anchors and distinguishes sampled
-  annual sales from period-average power additions. Incompatible inflow
+- Joint annualisation preserves native stock anchors and treats both reported
+  annual sales and power `New Cap` as annual samples, linearly interpolated.
+  Incompatible inflow
   constraints remain reported under the explicit penalty policy. Additional
   exit fractions are inherited from the stock baseline, not freely fitted.
 - UK-to-EUR and selected-WECC-to-USA composition transfers remain proxies.
-  Equal-service defaults, lifetime/shape priors, within-year exposure and
+  Equal-service defaults, transport lifetime/shape priors, within-year exposure and
   unresolved technology boundaries remain assumptions. Do not promote global
   defaults or extend post-2050 reporting semantics without new evidence.
 

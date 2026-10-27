@@ -16,7 +16,7 @@ the results with the standard Premise key.
 | MESSAGE | Normalizes region labels and removes the unsupported global aggregate. |
 | REMIND | Splits cement production and energy use into CCS and non-CCS variables and removes legacy aggregate regions. |
 | Any supported table | Filters variables using the `premise` variable-prefix allowlist. |
-| Opt-in stock vintages | Uses flodym lifetime models and explicit initial cohorts to append stock/service vintage variables. First reviewed example: REMIND SSP2-NPi2025, cars, trucks, PV and CCGT. |
+| Opt-in stock vintages | Uses explicit lifetime survival models, including the native REMIND capacity law, and initial cohorts to append stock/service vintage variables. First reviewed example: REMIND SSP2-NPi2025, cars, trucks, PV and CCGT. |
 
 Inputs can be CSV or Excel files. Each model workflow writes a semicolon-delimited
 CSV and a JSON processing report containing source and output hashes, row counts,
@@ -58,8 +58,15 @@ To reconstruct stock vintages from a CSV, REMIND MIF or Excel table:
 
 ```console
 python -m pip install -e '.[stocks]'
+iam-preprocessor remind-stock-config scenario.mif -o stocks.yaml \
+  --region DEU --region FRA --region UKI
 iam-preprocessor stock-vintages scenario.mif --config stocks.yaml -o output/stocks
 ```
+
+The REMIND config builder keeps regions separate, reads power `Cap`, `New Cap`
+and `Tech|...|Lifetime`, and reads transport `Stock` and `Sales`. Reported
+`New Cap` and `Sales` values are treated as annual observations and linearly
+interpolated. If no `--region` is supplied, known aggregate regions are excluded.
 
 The feature is opt-in and produces labelled reconstructions, not native IAM
 vintages. No new lifetime defaults are applied to other preprocessing commands.

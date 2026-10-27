@@ -17,7 +17,7 @@ pilot script; the legacy modes described below remain available unchanged.
 ```text
 existing scenario + cohort observations + explicit YAML assumptions
   -> exact variable/unit checks and annualisation
-  -> flodym survival matrices + initialized cohort balance
+  -> configured survival matrices + initialized cohort balance
   -> annual stock and service shares + diagnostics + hashed report
   -> enriched scenario CSV [optional filtering and encryption]
   -> premise IAMDataCollection runtime accessor
@@ -25,11 +25,14 @@ existing scenario + cohort observations + explicit YAML assumptions
 ```
 
 `flodym==1.1.0` is pinned in the optional `stocks` extra and the development
-environment. It provides the lifetime survival matrices. The small accounting
-adapter conditions observed initial survivors and handles explicitly selected
-additional exits. It does not claim that these operations are native flodym
-initial-stock or forced-retirement APIs. Analytical tests and comparisons with
-flodym's own `InflowDrivenDSM` and `StockDrivenDSM` verify the equivalent cases.
+environment as an independent comparison for the analytical fixed and Weibull
+implementations. The exact REMIND energy-conversion survival law is implemented
+directly because its
+reported lifetime is a maximum, not a Weibull mean. The small accounting adapter
+conditions observed initial survivors and handles explicitly selected additional
+exits. It does not claim that these operations are native flodym initial-stock or
+forced-retirement APIs. Analytical tests and comparisons with flodym's own
+`InflowDrivenDSM` and `StockDrivenDSM` verify the equivalent fixed/Weibull cases.
 
 The inspected flodym stock-driven solver can return negative inflows when a
 stock decline is incompatible with the supplied survival law. Here this either
@@ -44,7 +47,7 @@ boundaries and lifetime assumptions need a separate review.
 
 ## Accounting and timing
 
-Let `C[t,c]` be end-year stock in entry cohort `c`, and `S[t,c]` the flodym
+Let `C[t,c]` be end-year stock in entry cohort `c`, and `S[t,c]` the configured
 survival fraction. For surviving initial observations `C[t0,c]`, advance using
 conditional survival:
 
@@ -55,9 +58,9 @@ natural_exits[t] = sum(C[t-1,:]) - sum(survivors[t,:])
 
 Initial observations are not multiplied by unconditional survival again. An
 observed positive cohort with zero survival at initialization is rejected.
-Changing lifetime inputs affect new cohorts; earlier cohorts retain the
-explicit `initial_mean` prior. Scenario time-dependent lifetimes are indexed by
-entry year, not retroactively applied to every extant asset.
+Changing lifetime inputs affect new cohorts; earlier cohorts retain the explicit
+`initial_mean` or `initial_maximum` prior. Scenario time-dependent lifetimes are
+indexed by entry year, not retroactively applied to every extant asset.
 
 In stock mode, gross entries fill a positive gap to the target stock. A negative
 gap either raises an error or removes the same fraction of surviving cohorts.
@@ -110,12 +113,13 @@ Lifecycle/component bindings need their own existing reviewed rules.
 
 - One model and scenario per file; exact selected regions, variables and units.
 - Stock and service levels: linear interpolation between existing anchors.
-- Sampled annual sales: explicitly selected linear interpolation; not a claim
-  about interval totals.
+- REMIND `New Cap` and `Sales`: annual values at the reported years, with linear
+  interpolation to missing annual years.
 - Period-average additions: explicit inclusive annual windows for each reported
   anchor. The flat expansion preserves the declared window integral. Overlaps,
   gaps and absent anchors fail. No five-year rule is extended automatically into
-  later ten-year or irregular reporting periods.
+  later ten-year or irregular reporting periods. This generic option is not used
+  for REMIND `New Cap` under the variable definition adopted here.
 - No extrapolation. Missing/nonfinite selected source values fail. Original
   anchor values are preserved; newly needed annual columns for original rows
   are filled linearly between adjacent source columns, preventing holes when
@@ -178,17 +182,45 @@ reference year; amounts and factors must be finite and nonnegative. File paths
 are resolved relative to the YAML file. Public example code creates these local
 CSVs from the existing private evidence archive; observations are not bundled.
 
-For IAM lifetimes, replace `mean` with `source: {variable: ..., unit: years}`.
-`initial_mean` is still explicit. A technical/economic life is not automatically
-an observed mean: `interpretation` and `provenance` must state the choice. A
-Weibull mean is converted to scale using `mean / Gamma(1 + 1/shape)`.
-Use `distribution: fixed` without `shape` for fixed retirement age.
+For a Weibull IAM mean, replace `mean` with
+`source: {variable: ..., unit: years}`; `initial_mean` remains explicit. A
+Weibull mean is converted to scale using `mean / Gamma(1 + 1/shape)`. Use
+`distribution: fixed` without `shape` for a fixed retirement age.
 
-For power additions, use `inflow_timing.kind: reported_periods`, with, for example,
-`periods: [{anchor: 2025, start: 2023, end: 2027}, ...]`. Supply every required
-window explicitly. The example's reviewed five-year expansion supports the
-2022–2050 campaign. Beyond that range, review the reporter's changing periods;
-the generic reader's 2100 limit does not establish methodological coverage.
+REMIND energy-conversion `Tech|...|Lifetime` variables instead report maximum
+lifetime `tau`. Configure them with `distribution: remind`, an explicit
+`initial_maximum`, and the IAM `source`; do not supply `mean` or `shape`. Their
+survival is `max(0, 1 - (age/tau)^4)`, their mean lifetime is `4*tau/5`, and
+capacity is zero at and after `tau`. This depreciation represents dismantlement,
+not declining conversion efficiency. These semantics come from *Technical note:
+Lifetimes in REMIND* (2026-03-23) and are not automatically applied to transport
+`serviceLife` parameters.
+
+For REMIND power additions and vehicle sales, use
+`inflow_timing.kind: sampled_annual`. Values between source years are linearly
+interpolated. `reported_periods` remains available only for other inputs whose
+metadata explicitly defines period-average rates.
+
+Generate a starting configuration for separate REMIND regions with:
+
+```console
+iam-preprocessor remind-stock-config scenario.mif -o stocks.yaml \
+  --region DEU --region FRA --region UKI
+```
+
+Without `--region`, the builder emits every nonaggregate region found in the
+scenario. It maps exact leaf power technologies and the available transport
+classes, skipping asset families absent from the export. The opening composition
+is an explicitly labelled equilibrium prior because the scenario does not report
+the initial vintage distribution.
+
+For transport, the builder uses the disclosed `serviceLife` values as fixed
+retirement ages: 20 years for four-wheel LDVs, 15 for two-wheel LDVs, buses,
+light trucks and heavy trucks, and 8 for three-wheel LDVs. This is a transparent
+fallback, not a claim that REMIND disclosed a vehicle survival distribution.
+The supplied 0.10/0.05 interest rates are financial inputs and are not used as
+physical retirement parameters. Two- and three-wheel mappings are skipped for
+the inspected EU21 MIF because it contains no matching `Stock`/`Sales` rows.
 
 For equilibrium initialization use `kind: equilibrium`, `maximum_age` (1–150)
 and provenance, without `file`. For observed service factors use
