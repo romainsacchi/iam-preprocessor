@@ -277,6 +277,24 @@ def test_rejects_bad_configuration(inputs, problem):
         load_stock_config(path)
 
 
+def test_joint_mode_rejects_unimplemented_cohort_exit_allocations(inputs):
+    _, config, path, _ = inputs
+    asset = config["assets"][0]
+    asset.update(
+        mode="joint",
+        exit_policy="oldest_first",
+        annualisation={
+            "inflow_constraints": "penalized",
+            "reference_weight": 0.01,
+            "inflow_weight": 10,
+            "provenance": "test",
+        },
+    )
+    path.write_text(yaml.safe_dump(config))
+    with pytest.raises(DataValidationError, match="Joint mode supports"):
+        load_stock_config(path)
+
+
 def test_equilibrium_is_explicit_and_has_normalized_shares(inputs):
     frame, config, path, _ = inputs
     a = config["assets"][0]

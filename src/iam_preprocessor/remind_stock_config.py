@@ -40,7 +40,15 @@ def _value_at(row, reference_year, labels):
 
 
 def _common_asset(
-    asset_id, region, stock, inflow, lifetime, maximum_age, base_year, reference_year
+    asset_id,
+    region,
+    stock,
+    inflow,
+    lifetime,
+    maximum_age,
+    base_year,
+    reference_year,
+    reconciliation,
 ):
     if base_year < reference_year:
         initial = {
@@ -60,7 +68,7 @@ def _common_asset(
             "provenance": "Stationary historical-inflow prior at the first scenario year; "
             "no region-specific opening vintage observations were supplied.",
         }
-    return {
+    result = {
         "id": asset_id,
         "region": region,
         "stock": stock,
@@ -72,14 +80,23 @@ def _common_asset(
         },
         "lifetime": lifetime,
         "initial": initial,
-        "mode": "stock_flow",
-        "exit_policy": "error",
+        "mode": "stock_flow" if reconciliation == "strict" else "joint",
+        "exit_policy": "error" if reconciliation == "strict" else "proportional",
         "service_weighting": {
             "kind": "equal",
             "annual_age_decay": 0,
             "provenance": "Equal service per surviving unit; vintage stock composition only.",
         },
     }
+    if reconciliation == "joint":
+        result["annualisation"] = {
+            "inflow_constraints": "penalized",
+            "reference_weight": 0.01,
+            "inflow_weight": 10,
+            "provenance": "Diagnostic reconciliation: preserve IAM stock anchors and adjust "
+            "annual additions minimally when stock, additions and survival are inconsistent.",
+        }
+    return result
 
 
 def build_remind_stock_config(
@@ -90,6 +107,7 @@ def build_remind_stock_config(
     end_year=None,
     include_power=True,
     include_transport=True,
+    reconciliation="strict",
 ):
     """Return a validated-shape configuration for individual REMIND regions.
 
@@ -120,6 +138,8 @@ def build_remind_stock_config(
         )
     if not include_power and not include_transport:
         raise DataValidationError("Select at least one power or transport asset family.")
+    if reconciliation not in {"strict", "joint"}:
+        raise DataValidationError("reconciliation must be strict or joint.")
 
     assets = []
     skipped = []
@@ -179,6 +199,7 @@ def build_remind_stock_config(
                         maximum_age,
                         anchors[0],
                         reference_year,
+                        reconciliation,
                     )
                 )
         if include_transport:
@@ -221,6 +242,7 @@ def build_remind_stock_config(
                         service_life,
                         anchors[0],
                         reference_year,
+                        reconciliation,
                     )
                 )
     if not assets:
@@ -246,6 +268,7 @@ def write_remind_stock_config(
     end_year=None,
     include_power=True,
     include_transport=True,
+    reconciliation="strict",
     overwrite=False,
 ):
     """Build and write a REMIND stock-vintage YAML configuration."""
@@ -261,6 +284,7 @@ def write_remind_stock_config(
         end_year=end_year,
         include_power=include_power,
         include_transport=include_transport,
+        reconciliation=reconciliation,
     )
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")

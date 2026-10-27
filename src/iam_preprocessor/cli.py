@@ -148,6 +148,7 @@ def remind_stock_config_command(
     end_year: int | None = typer.Option(None, "--end-year"),
     power: bool = typer.Option(True, "--power/--no-power"),
     transport: bool = typer.Option(True, "--transport/--no-transport"),
+    reconciliation: str = typer.Option("strict", "--reconciliation"),
     overwrite: bool = typer.Option(False, "--overwrite"),
 ) -> None:
     """Create per-region REMIND Cap/New Cap and Stock/Sales vintage config."""
@@ -159,6 +160,7 @@ def remind_stock_config_command(
         end_year=end_year,
         include_power=power,
         include_transport=transport,
+        reconciliation=reconciliation,
         overwrite=overwrite,
     )
     typer.echo(

@@ -128,6 +128,10 @@ def load_stock_config(path):
         if asset["mode"] not in ("stock", "inflow", "stock_flow", "joint"):
             raise DataValidationError("mode must be stock, inflow, stock_flow or joint.")
         if asset["mode"] == "joint":
+            if asset["exit_policy"] not in {"error", "proportional"}:
+                raise DataValidationError(
+                    "Joint mode supports only error or proportional exit allocation."
+                )
             annual = asset.get("annualisation")
             fields(
                 annual, ("inflow_constraints", "reference_weight", "inflow_weight", "provenance")

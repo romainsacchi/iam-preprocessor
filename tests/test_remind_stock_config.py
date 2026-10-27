@@ -94,3 +94,13 @@ def test_later_reference_year_uses_acknowledged_warm_start():
         "provenance": "Stationary historical-inflow legacy prior at the first IAM year, "
         "advanced to the reference year using IAM stocks and additions.",
     }
+
+
+def test_joint_reconciliation_is_explicit_and_penalized():
+    config, _ = build_remind_stock_config(frame(), regions=["DEU"], reconciliation="joint")
+    asset = config["assets"][0]
+    assert asset["mode"] == "joint"
+    assert asset["exit_policy"] == "proportional"
+    assert asset["annualisation"]["inflow_constraints"] == "penalized"
+    with pytest.raises(DataValidationError, match="strict or joint"):
+        build_remind_stock_config(frame(), reconciliation="automatic")

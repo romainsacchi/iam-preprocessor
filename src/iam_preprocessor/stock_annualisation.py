@@ -171,10 +171,12 @@ def fit_annual_additions(
         A=constraints,
         l=lower,
         u=upper,
-        eps_abs=1e-10,
-        eps_rel=1e-10,
-        max_iter=200_000,
+        eps_abs=1e-9,
+        eps_rel=1e-9,
+        max_iter=1_000_000,
         polishing=True,
+        scaled_termination=True,
+        adaptive_rho_interval=25,
         verbose=False,
     )
     solver.warm_start(x=feasible.x[:n])
