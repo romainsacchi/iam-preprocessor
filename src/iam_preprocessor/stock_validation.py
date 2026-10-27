@@ -19,25 +19,44 @@ def check_experiment_inputs(experiment, fields):
         raise ValueError("Initial conditions and priors must be declared")
 
 
-def opening_survival(initial, reference, year, mean, shape=3, *, method="prior"):
-    if method not in {"prior", "no-retirement"} or mean <= 0 or shape <= 0:
+def opening_survival(
+    initial, reference, year, lifetime, shape=3, *, distribution="weibull", method="prior"
+):
+    if (
+        method not in {"prior", "no-retirement"}
+        or distribution not in {"fixed", "weibull", "remind"}
+        or lifetime <= 0
+        or (distribution == "weibull" and shape <= 0)
+    ):
         raise ValueError("Invalid survival prior or method")
     if year <= reference or any(c > reference or q < 0 for c, q in initial.items()):
         raise ValueError("Invalid opening cohort experiment")
-    scale = mean / gamma(1 + 1 / shape)
-    return {
-        c: q
-        * (
-            np.exp(-(((year - c) / scale) ** shape - ((reference - c) / scale) ** shape))
-            if method == "prior"
-            else 1.0
-        )
-        for c, q in initial.items()
-    }
+    scale = lifetime / gamma(1 + 1 / shape) if distribution == "weibull" else None
+
+    def ratio(cohort):
+        if method == "no-retirement":
+            return 1.0
+        opening_age, closing_age = reference - cohort, year - cohort
+        if distribution == "weibull":
+            return np.exp(-((closing_age / scale) ** shape - (opening_age / scale) ** shape))
+        if distribution == "fixed":
+            return float(closing_age < lifetime)
+        opening = max(0, 1 - (opening_age / lifetime) ** 4)
+        return max(0, 1 - (closing_age / lifetime) ** 4) / opening if opening > 0 else 0
+
+    return {c: q * ratio(c) for c, q in initial.items()}
 
 
 def conditional_history(
-    initial, reference, totals, mean, shape=3, *, method="prior", additions=None
+    initial,
+    reference,
+    totals,
+    lifetime,
+    shape=3,
+    *,
+    distribution="weibull",
+    method="prior",
+    additions=None,
 ):
     """Only aggregate totals or independently supplied additions enter prediction."""
     if method not in {"prior", "no-retirement", "equilibrium"}:
@@ -48,7 +67,12 @@ def conditional_history(
         or any(c > reference or q < 0 for c, q in initial.items())
     ):
         raise ValueError("Invalid initial cohorts")
-    if mean <= 0 or shape <= 0 or any(not np.isfinite(v) or v < 0 for v in totals.values()):
+    if (
+        lifetime <= 0
+        or (distribution == "weibull" and shape <= 0)
+        or distribution not in {"fixed", "weibull", "remind"}
+        or any(not np.isfinite(v) or v < 0 for v in totals.values())
+    ):
         raise ValueError("Invalid driver or prior")
     end = max(totals)
     if set(totals) != set(range(reference, end + 1)):
@@ -67,9 +91,9 @@ def conditional_history(
     else:
         sf = survival_matrix(
             years.tolist(),
-            np.full(len(years), mean),
-            distribution="weibull",
-            shape=shape,
+            np.full(len(years), lifetime),
+            distribution=distribution,
+            shape=shape if distribution == "weibull" else None,
             conditional_year=None if method == "equilibrium" else reference,
         )
     stock = np.zeros(len(years))

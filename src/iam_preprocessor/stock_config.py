@@ -147,24 +147,48 @@ def load_stock_config(path):
         lifetime = asset["lifetime"]
         fields(
             lifetime,
-            ("distribution", "initial_mean", "interpretation", "provenance"),
-            ("mean", "source", "shape"),
+            ("distribution", "interpretation", "provenance"),
+            ("initial_mean", "mean", "initial_maximum", "maximum", "source", "shape"),
         )
-        if ("mean" in lifetime) == ("source" in lifetime):
-            raise DataValidationError("Choose exactly one lifetime mean or IAM source.")
         for key in ("interpretation", "provenance"):
             nonempty(lifetime[key], key)
-        positive(lifetime["initial_mean"], "initial_mean")
-        if "mean" in lifetime:
-            positive(lifetime["mean"], "mean")
+        distribution = lifetime["distribution"]
+        if distribution == "remind":
+            if "initial_maximum" not in lifetime or any(
+                key in lifetime for key in ("initial_mean", "mean", "shape")
+            ):
+                raise DataValidationError(
+                    "REMIND lifetimes require initial_maximum and do not accept mean or shape."
+                )
+            if ("maximum" in lifetime) == ("source" in lifetime):
+                raise DataValidationError(
+                    "Choose exactly one REMIND maximum lifetime or IAM source."
+                )
+            positive(lifetime["initial_maximum"], "initial_maximum")
+            if "maximum" in lifetime:
+                positive(lifetime["maximum"], "maximum")
         else:
+            if "initial_mean" not in lifetime or any(
+                key in lifetime for key in ("initial_maximum", "maximum")
+            ):
+                raise DataValidationError(
+                    "Fixed and Weibull lifetimes require initial_mean and do not accept maximum."
+                )
+            if ("mean" in lifetime) == ("source" in lifetime):
+                raise DataValidationError("Choose exactly one lifetime mean or IAM source.")
+            positive(lifetime["initial_mean"], "initial_mean")
+            if "mean" in lifetime:
+                positive(lifetime["mean"], "mean")
+        if "source" in lifetime:
             selector(lifetime["source"])
             if lifetime["source"]["unit"] != "years":
                 raise DataValidationError("Lifetime source units must be years.")
-        if lifetime["distribution"] == "weibull":
+        if distribution == "weibull":
             positive(lifetime.get("shape"), "Weibull shape")
-        elif lifetime["distribution"] != "fixed" or "shape" in lifetime:
-            raise DataValidationError("Choose fixed lifetime or Weibull with an explicit shape.")
+        elif distribution not in ("fixed", "remind") or "shape" in lifetime:
+            raise DataValidationError(
+                "Choose fixed, Weibull with an explicit shape, or REMIND maximum lifetime."
+            )
         initial = asset["initial"]
         fields(initial, ("kind", "provenance"), ("file", "maximum_age"))
         nonempty(initial["provenance"], "initial stock provenance")

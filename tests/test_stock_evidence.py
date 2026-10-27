@@ -141,6 +141,12 @@ def test_conditional_survival_and_no_retirement_benchmark():
     assert opening_survival({2000: 10}, 2020, 2022, 30, method="no-retirement")[2000] == 10
 
 
+def test_remind_opening_survival_uses_maximum_lifetime_curve():
+    actual = opening_survival({2000: 10}, 2020, 2022, 30, distribution="remind")[2000]
+    expected = 10 * (1 - (22 / 30) ** 4) / (1 - (20 / 30) ** 4)
+    assert actual == pytest.approx(expected)
+
+
 def test_known_additions_and_stock_conditioning_are_separate_experiments():
     a = conditional_history(
         {2010: 10}, 2020, {2020: 10, 2021: 999, 2022: 555}, 30, additions={2021: 2, 2022: 3}

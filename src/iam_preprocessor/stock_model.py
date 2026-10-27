@@ -1,4 +1,4 @@
-"""Annual cohort accounting using flodym's lifetime survival matrices.
+"""Annual cohort accounting using explicit lifetime survival matrices.
 
 Observed initial cohorts are surviving stock, not historical inflows. Their
 future survival is conditional on being present at the reference year.
@@ -11,7 +11,7 @@ from math import gamma
 
 import numpy as np
 
-from .exceptions import DataValidationError, IamPreprocessorError
+from .exceptions import DataValidationError
 
 
 @dataclass
@@ -27,60 +27,87 @@ class CohortResult:
     balance: np.ndarray
 
 
-def survival_matrix(years, means, *, distribution, shape=None, conditional_year=None):
-    """Build a flodym survival matrix with end-year entry and cohort lifetimes.
+def survival_matrix(years, lifetimes, *, distribution, shape=None, conditional_year=None):
+    """Build a survival matrix with end-year entry and cohort lifetimes.
 
     End-year entry makes the first-year surviving fraction one. It is a
     declared annual timing convention, not an estimate of commissioning dates.
 
     For observed initial stock, ``conditional_year`` conditions pre-existing
-    Weibull cohorts on survival to that year in log space. Their pre-reference
-    lower triangle is one and must not be interpreted as historical survival.
-    This avoids dividing two underflowed probabilities for rare old survivors.
-    Fixed lifetimes remain unchanged: observations beyond that age are invalid.
+    cohorts on survival to that year. Their valid pre-reference lower triangle
+    is one and must not be interpreted as historical survival. Weibull
+    conditioning in log space avoids dividing two underflowed probabilities
+    for rare old survivors. Fixed lifetimes remain unchanged: observations
+    beyond that age are invalid.
     Weibull means are converted to scale; shape is an independent assumption.
+    REMIND energy-conversion lifetimes are maximum lifetimes ``tau``, with
+    survival ``max(0, 1 - (age / tau) ** 4)`` and mean ``4 * tau / 5``.
     """
-    try:
-        from flodym import Dimension, DimensionSet, FixedLifetime, WeibullLifetime
-    except ImportError as exc:
-        raise IamPreprocessorError(
-            "Install iam-preprocessor[stocks] to reconstruct cohorts."
-        ) from exc
-
-    means = np.asarray(means, dtype=float)
-    if means.shape != (len(years),) or not np.isfinite(means).all() or (means <= 0).any():
-        raise DataValidationError("Lifetime means must be finite, positive and cohort-specific.")
-    dims = DimensionSet(dim_list=[Dimension(name="time", letter="t", items=list(years))])
-    if distribution == "fixed":
-        model = FixedLifetime(dims=dims, mean=means, inflow_at="end")
-    elif distribution == "weibull":
-        if shape is None or not np.isfinite(shape) or shape <= 0:
-            raise DataValidationError("Weibull shape must be finite and positive.")
-        model = WeibullLifetime(
-            dims=dims,
-            weibull_scale=means / gamma(1 + 1 / shape),
-            weibull_shape=shape,
-            inflow_at="end",
+    lifetimes = np.asarray(lifetimes, dtype=float)
+    if (
+        lifetimes.shape != (len(years),)
+        or not np.isfinite(lifetimes).all()
+        or (lifetimes <= 0).any()
+    ):
+        raise DataValidationError(
+            "Lifetime parameters must be finite, positive and cohort-specific."
         )
+    dates = np.asarray(years)
+    if distribution == "weibull" and (shape is None or not np.isfinite(shape) or shape <= 0):
+        raise DataValidationError("Weibull shape must be finite and positive.")
+    if distribution not in {"fixed", "weibull", "remind"}:
+        raise DataValidationError("Lifetime distribution must be fixed, weibull or remind.")
+    if distribution == "remind":
+        if shape is not None:
+            raise DataValidationError("REMIND maximum lifetimes do not use a shape parameter.")
+        age = np.maximum(0, dates[:, None] - dates[None, :])
+        sf = np.maximum(0, 1 - (age / lifetimes[None, :]) ** 4)
+        sf *= dates[:, None] >= dates[None, :]
+    elif distribution == "fixed":
+        if shape is not None:
+            raise DataValidationError("Fixed lifetimes do not use a shape parameter.")
+        age = np.maximum(0, dates[:, None] - dates[None, :])
+        sf = (age < lifetimes[None, :]) * (dates[:, None] >= dates[None, :])
+        sf = sf.astype(float)
     else:
-        raise DataValidationError("Lifetime distribution must be fixed or weibull.")
-    sf = np.asarray(model.sf).copy()
+        scale = lifetimes / gamma(1 + 1 / shape)
+        age = np.maximum(0, dates[:, None] - dates[None, :])
+        sf = np.exp(-((age / scale[None, :]) ** shape))
+        sf *= dates[:, None] >= dates[None, :]
     if conditional_year is not None:
         if conditional_year not in years:
             raise DataValidationError("Conditional survival year must be in the model years.")
         if distribution == "weibull":
-            dates = np.asarray(years)
             initial = dates <= conditional_year
             ages = np.maximum(0, dates[:, None] - dates[None, initial])
             reference_ages = conditional_year - dates[initial]
-            scale = means[initial] / gamma(1 + 1 / shape)
+            scale = lifetimes[initial] / gamma(1 + 1 / shape)
             hazard = np.maximum(0, (ages / scale) ** shape - (reference_ages / scale) ** shape)
             sf[:, initial] = np.exp(-hazard) * (dates[:, None] >= dates[None, initial])
+        elif distribution == "remind":
+            initial = dates <= conditional_year
+            ages = np.maximum(0, dates[:, None] - dates[None, initial])
+            reference_ages = conditional_year - dates[initial]
+            raw = np.maximum(0, 1 - (ages / lifetimes[None, initial]) ** 4)
+            reference = np.maximum(0, 1 - (reference_ages / lifetimes[initial]) ** 4)
+            conditional = np.divide(
+                raw,
+                reference[None, :],
+                out=np.zeros_like(raw),
+                where=reference[None, :] > 0,
+            )
+            before_reference = dates <= conditional_year
+            conditional[before_reference, :] = np.where(
+                reference[None, :] > 0,
+                1,
+                raw[before_reference, :],
+            )
+            sf[:, initial] = conditional * (dates[:, None] >= dates[None, initial])
     return sf
 
 
 def reconstruct(*, years, reference_year, initial, survival, targets, mode, exit_policy):
-    """Evolve an initialized stock using a flodym survival matrix.
+    """Evolve an initialized stock using a configured survival matrix.
 
     ``targets`` means closing stocks in stock mode and annual entries in inflow
     mode. Proportional additional exits are an explicit stock-mode assumption.

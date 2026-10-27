@@ -105,8 +105,10 @@ def _asset_result(frame, asset, reference_year, end_year):
     service_years = np.arange(reference_year, end_year + 1)
     ref = reference_year - first
     stock_targets = interpolate(stock_series, service_years)
-    if stock_targets[0] <= 0:
-        raise DataValidationError("Initial stock must be positive to infer its composition.")
+    if stock_targets[0] == 0 and observed is not None:
+        raise DataValidationError(
+            "Observed opening composition cannot initialize a zero regional stock."
+        )
     # The reference stock is an initial condition, not the reference year's inflow.
     flows = np.r_[
         0.0,
@@ -117,15 +119,17 @@ def _asset_result(frame, asset, reference_year, end_year):
         ),
     ]
     lifetime = asset["lifetime"]
-    means = np.full(len(years), float(lifetime["initial_mean"]))
-    means[ref + 1 :] = (
+    parameter = "maximum" if lifetime["distribution"] == "remind" else "mean"
+    initial_parameter = f"initial_{parameter}"
+    lifetimes = np.full(len(years), float(lifetime[initial_parameter]))
+    lifetimes[ref + 1 :] = (
         interpolate(_series(frame, asset["region"], lifetime["source"]), years[ref + 1 :])
         if "source" in lifetime
-        else lifetime["mean"]
+        else lifetime[parameter]
     )
     sf = survival_matrix(
         years.tolist(),
-        means,
+        lifetimes,
         distribution=lifetime["distribution"],
         shape=lifetime.get("shape"),
         conditional_year=reference_year if observed is not None else None,
@@ -148,7 +152,10 @@ def _asset_result(frame, asset, reference_year, end_year):
                 raise DataValidationError("Non-numeric observed service factors.") from exc
     if not np.isfinite(factors).all() or (factors < 0).any():
         raise DataValidationError("Service factors must be finite and nonnegative.")
-    initial *= stock_targets[0] / initial.sum()
+    if stock_targets[0] > 0:
+        initial *= stock_targets[0] / initial.sum()
+    else:
+        initial[:] = 0
     result = reconstruct(
         years=years,
         reference_year=reference_year,

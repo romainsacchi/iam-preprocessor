@@ -6,6 +6,7 @@ from .filtering import filter_variables
 from .image import prepare_image
 from .message import prepare_message
 from .remind import prepare_remind
+from .remind_stock_config import build_remind_stock_config, write_remind_stock_config
 from .report import ProcessingReport
 from .stock_vintages import enrich_stock_vintages, prepare_stock_vintages
 from .transport import derive_bev_truck_variables, derive_transport_energy_services
@@ -13,6 +14,7 @@ from .transport import derive_bev_truck_variables, derive_transport_energy_servi
 __all__ = [
     "ProcessingReport",
     "SecConfig",
+    "build_remind_stock_config",
     "decrypt_file",
     "derive_bev_truck_variables",
     "derive_transport_energy_services",
@@ -24,6 +26,7 @@ __all__ = [
     "prepare_message",
     "prepare_remind",
     "prepare_stock_vintages",
+    "write_remind_stock_config",
 ]
 
 __version__ = "0.1.1"

@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-from flodym import Dimension, DimensionSet, FixedLifetime, InflowDrivenDSM, StockDrivenDSM
 
 from iam_preprocessor.exceptions import DataValidationError
 from iam_preprocessor.stock_model import reconstruct, survival_matrix
@@ -31,11 +30,12 @@ def test_fixed_lifetime_replacement_and_conservation():
 
 @pytest.mark.parametrize("mode", ["stock", "inflow"])
 def test_against_flodym_native_dsm(mode):
+    flodym = pytest.importorskip("flodym")
     years = list(range(2020, 2030))
     targets = np.linspace(10, 20, 10) if mode == "stock" else np.arange(1, 11, dtype=float)
-    dims = DimensionSet(dim_list=[Dimension(name="time", letter="t", items=years)])
-    law = FixedLifetime(dims=dims, mean=3, inflow_at="end")
-    cls = StockDrivenDSM if mode == "stock" else InflowDrivenDSM
+    dims = flodym.DimensionSet(dim_list=[flodym.Dimension(name="time", letter="t", items=years)])
+    law = flodym.FixedLifetime(dims=dims, mean=3, inflow_at="end")
+    cls = flodym.StockDrivenDSM if mode == "stock" else flodym.InflowDrivenDSM
     native = cls(dims=dims, lifetime_model=law)
     getattr(native, "stock" if mode == "stock" else "inflow").values[:] = targets
     native.compute()
@@ -84,6 +84,64 @@ def test_new_lifetime_applies_to_new_cohort_only():
     sf = survival_matrix(years, [2, 10, 10, 10, 10, 10], distribution="fixed")
     assert sf[2, 0] == 0
     assert sf[5, 1] == 1
+
+
+def test_fixed_lifetime_matrix_does_not_require_flodym_runtime():
+    sf = survival_matrix([2020, 2021, 2022], [2, 2, 2], distribution="fixed")
+    np.testing.assert_array_equal(sf[:, 0], [1, 1, 0])
+    with pytest.raises(DataValidationError, match="do not use a shape"):
+        survival_matrix([2020, 2021], [2, 2], distribution="fixed", shape=3)
+
+
+def test_remind_maximum_lifetime_survival_and_cutoff():
+    years = list(range(2020, 2026))
+    sf = survival_matrix(years, np.full(len(years), 5), distribution="remind")
+    expected = np.maximum(0, 1 - (np.arange(6) / 5) ** 4)
+    np.testing.assert_allclose(sf[:, 0], expected)
+    assert sf[5, 0] == 0
+    assert sf[4, 0] > 0
+    np.testing.assert_array_equal(np.triu(sf, 1), 0)
+
+
+def test_remind_observed_cohorts_use_conditional_survival():
+    years = list(range(2020, 2027))
+    sf = survival_matrix(
+        years,
+        np.full(len(years), 5),
+        distribution="remind",
+        conditional_year=2022,
+    )
+    assert sf[2, 0] == 1
+    expected = (1 - (3 / 5) ** 4) / (1 - (2 / 5) ** 4)
+    assert sf[3, 0] == pytest.approx(expected)
+    assert sf[5, 0] == 0
+
+
+def test_remind_observed_cohort_at_maximum_lifetime_is_impossible():
+    years = list(range(2020, 2027))
+    sf = survival_matrix(
+        years,
+        np.full(len(years), 2),
+        distribution="remind",
+        conditional_year=2022,
+    )
+    initial = np.zeros(len(years))
+    initial[0] = 1
+    with pytest.raises(DataValidationError, match="impossible"):
+        reconstruct(
+            years=years,
+            reference_year=2022,
+            initial=initial,
+            survival=sf,
+            targets=np.zeros(5),
+            mode="inflow",
+            exit_policy="error",
+        )
+
+
+def test_remind_distribution_rejects_weibull_shape():
+    with pytest.raises(DataValidationError, match="do not use a shape"):
+        survival_matrix([2020, 2021], [30, 30], distribution="remind", shape=3)
 
 
 def test_zero_stock_and_restart():

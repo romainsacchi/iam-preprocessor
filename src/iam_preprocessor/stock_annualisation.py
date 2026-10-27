@@ -153,7 +153,6 @@ def fit_annual_additions(
             raise DataValidationError(f"Joint stock-only feasibility failed: {feasible.message}")
         minimum_residual = float(feasible.fun)
         equality, target = _independent_equalities(response, stock_rhs)
-    constraints = [LinearConstraint(equality, target, target)]
     curvature = np.diff(np.eye(n), n=2, axis=0)
 
     def objective(x):
@@ -175,16 +174,60 @@ def fit_annual_additions(
     # Retry only if the independent KKT certificate requires it; demanding this
     # tolerance universally can stall SLSQP on degenerate bound-active faces.
     start = feasible.x[:n]
-    for ftol in (1e-13, 1e-15):
+    free = np.arange(n)
+    presolved_fixed_zero = []
+
+    def presolve_fixed_zeros():
+        nonlocal free, presolved_fixed_zero
+        possible = []
+        for column in range(n):
+            direction = np.zeros(n)
+            direction[column] = -1
+            maximum = linprog(
+                direction,
+                A_eq=equality,
+                b_eq=target,
+                bounds=(0, None),
+                method="highs",
+                options=lp_options,
+            )
+            if maximum.status == 3 or (maximum.success and maximum.x[column] > 1e-10):
+                possible.append(column)
+            elif not maximum.success:
+                raise DataValidationError(f"Joint bound presolve failed: {maximum.message}")
+        free = np.asarray(possible, dtype=int)
+        presolved_fixed_zero = sorted(set(range(n)) - set(possible))
+        if not len(free):
+            raise DataValidationError("Joint annual fit has no free inflow variables.")
+
+    def optimize(current, ftol):
+        def expand(values):
+            expanded = np.zeros(n)
+            expanded[free] = values
+            return expanded
+
+        reduced_equality, reduced_target = _independent_equalities(equality[:, free], target)
+        constraints = [LinearConstraint(reduced_equality, reduced_target, reduced_target)]
         optimized = minimize(
-            objective,
-            start,
-            jac=gradient,
+            lambda values: objective(expand(values)),
+            current[free],
+            jac=lambda values: gradient(expand(values))[free],
             method="SLSQP",
             bounds=Bounds(0, np.inf),
             constraints=constraints,
             options={"ftol": ftol, "maxiter": 2000},
         )
+        optimized.x = expand(optimized.x)
+        return optimized
+
+    for ftol in (1e-13, 1e-15):
+        optimized = optimize(start, ftol)
+        if not optimized.success and len(free) == n:
+            # SLSQP can report incompatible inequalities when equality constraints
+            # force some bounded variables exactly to zero. Prove those zeros with
+            # HiGHS, remove only those columns, and retry the same convex problem.
+            presolve_fixed_zeros()
+            optimized = optimize(start, ftol)
         if not optimized.success:
             raise DataValidationError(f"Joint smooth annual fit failed: {optimized.message}")
         values = optimized.x[:n]
@@ -214,6 +257,8 @@ def fit_annual_additions(
         complementarity = float(np.max(np.abs(dual.x[len(target) :] * values[active]), initial=0))
         if dual.success and stationarity <= 2e-6 and complementarity <= 1e-8:
             break
+        if len(free) == n:
+            presolve_fixed_zeros()
         start = values
     else:
         raise DataValidationError(
@@ -236,6 +281,7 @@ def fit_annual_additions(
         "kkt_stationarity_max": stationarity,
         "kkt_complementarity_max": complementarity,
         "solver": "SciPy HiGHS linear feasibility / SLSQP convex quadratic smoothing",
+        "presolved_fixed_zero_inflow_indices": presolved_fixed_zero,
     }
 
 

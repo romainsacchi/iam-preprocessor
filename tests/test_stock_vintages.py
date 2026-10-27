@@ -105,6 +105,62 @@ def test_initial_shares_service_shares_and_original_anchor_preservation(inputs):
         np.testing.assert_allclose(subset[[str(y) for y in range(2020, 2031)]].sum(), 1)
 
 
+def test_equilibrium_initialization_allows_zero_opening_stock(inputs):
+    frame, config, path, _ = inputs
+    frame.loc[frame.Variable.eq("Stock|Cars"), "2020"] = 0
+    frame.loc[frame.Variable.eq("ES|Cars"), "2020"] = 0
+    asset = config["assets"][0]
+    asset["initial"] = {
+        "kind": "equilibrium",
+        "maximum_age": 20,
+        "provenance": "test zero initial stock",
+    }
+    asset["service_weighting"] = {
+        "kind": "equal",
+        "annual_age_decay": 0,
+        "provenance": "test",
+    }
+    path.write_text(yaml.safe_dump(config))
+    enriched, _ = enrich_stock_vintages(frame, load_stock_config(path))
+    values = enriched.set_index("Variable")
+    assert values.at[PREFIX + "cars|Stock", "2020"] == 0
+
+
+def test_remind_maximum_lifetime_configuration_drives_conditional_survival(inputs):
+    frame, config, path, _ = inputs
+    law = config["assets"][0]["lifetime"]
+    law.clear()
+    law.update(
+        distribution="remind",
+        initial_maximum=30,
+        source={"variable": "Tech|Cars|Lifetime", "unit": "years"},
+        interpretation="REMIND maximum lifetime",
+        provenance="test REMIND technical note",
+    )
+    path.write_text(yaml.safe_dump(config))
+    enriched, _ = enrich_stock_vintages(frame, load_stock_config(path))
+    values = enriched.set_index("Variable")
+    expected = 2 * (1 - (11 / 30) ** 4) / (1 - (10 / 30) ** 4)
+    assert values.at[PREFIX + "cars|Stock|Vintage|2010", "2021"] == pytest.approx(expected)
+
+
+def test_remind_lifetime_schema_rejects_mean_and_shape_fields(inputs):
+    _, config, path, _ = inputs
+    law = config["assets"][0]["lifetime"]
+    law.clear()
+    law.update(
+        distribution="remind",
+        initial_maximum=30,
+        maximum=30,
+        mean=24,
+        interpretation="invalid mixed semantics",
+        provenance="test",
+    )
+    path.write_text(yaml.safe_dump(config))
+    with pytest.raises(DataValidationError, match="do not accept mean or shape"):
+        load_stock_config(path)
+
+
 def test_period_rates_preserve_integrals_and_support_irregular_explicit_windows():
     timing = {
         "kind": "reported_periods",

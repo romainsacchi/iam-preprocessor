@@ -14,6 +14,7 @@ from .image import prepare_image
 from .io import discover_inputs, read_frame, write_csv_atomic
 from .message import prepare_message
 from .remind import prepare_remind
+from .remind_stock_config import write_remind_stock_config
 from .stock_vintages import prepare_stock_vintages
 
 app = typer.Typer(
@@ -136,6 +137,38 @@ def stock_vintages_command(
             )
         ]
     )
+
+
+@app.command("remind-stock-config")
+def remind_stock_config_command(
+    source: Path = typer.Argument(..., exists=True, readable=True, dir_okay=False),
+    destination: Path = typer.Option(..., "--output", "-o", dir_okay=False),
+    regions: list[str] | None = typer.Option(None, "--region"),
+    reference_year: int | None = typer.Option(None, "--reference-year"),
+    end_year: int | None = typer.Option(None, "--end-year"),
+    power: bool = typer.Option(True, "--power/--no-power"),
+    transport: bool = typer.Option(True, "--transport/--no-transport"),
+    overwrite: bool = typer.Option(False, "--overwrite"),
+) -> None:
+    """Create per-region REMIND Cap/New Cap and Stock/Sales vintage config."""
+    path, config, skipped = write_remind_stock_config(
+        source,
+        destination,
+        regions=regions,
+        reference_year=reference_year,
+        end_year=end_year,
+        include_power=power,
+        include_transport=transport,
+        overwrite=overwrite,
+    )
+    typer.echo(
+        f"Wrote {path} ({len(config['assets'])} region/asset mappings; "
+        f"{len(skipped)} unavailable mappings skipped)"
+    )
+    if skipped:
+        typer.echo(
+            "Unavailable asset families: " + ", ".join(sorted({s["asset"] for s in skipped}))
+        )
 
 
 @app.command("filter")
