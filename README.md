@@ -63,10 +63,19 @@ iam-preprocessor remind-stock-config scenario.mif -o stocks.yaml \
 iam-preprocessor stock-vintages scenario.mif --config stocks.yaml -o output/stocks
 ```
 
+The stock command writes a canonical, sparse v2 sidecar directory containing
+`vintages.parquet`, `vintages.csv.gz`, `validation.json`, and
+`datapackage.json`. The manifest binds the package to the exact IAM input,
+configuration, mapping registries, and optional evidence manifest. The existing
+wide `Stock Vintage|v1|...` CSV remains a compatibility output.
+
 The REMIND config builder keeps regions separate, reads power `Cap`, `New Cap`
 and `Tech|...|Lifetime`, and reads transport `Stock` and `Sales`. Reported
 `New Cap` and `Sales` values are treated as annual observations and linearly
 interpolated. If no `--region` is supplied, known aggregate regions are excluded.
+Generated schema-v2 configurations use strict `stock_flow` accounting: both
+stocks and additions are preserved, and an infeasible closed balance fails
+unless an explicit additional-retirement policy is selected.
 
 The feature is opt-in and produces labelled reconstructions, not native IAM
 vintages. No new lifetime defaults are applied to other preprocessing commands.

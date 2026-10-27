@@ -7,6 +7,12 @@ flodym. The first application is **REMIND SSP2-NPi2025**, using the existing loc
 reconstructions, not recovery of REMIND's native vintages or a new calibration
 of its exact run. No additional REMIND-team data is required for this route.
 
+The production default is strict `stock_flow` mode. It preserves both the
+linearly annualized stock path and additions, infers only explicitly authorized
+additional retirements, never retires a same-year addition, and fails rather
+than inventing a balancing flow. `error` is the default policy;
+`proportional`, `oldest_first`, and `hazard_weighted` are explicit alternatives.
+
 The optional [joint annualisation mode](joint-stock-annualisation.md) fits smooth
 annual additions while retaining original stock anchors and reconciling sampled
 sales or complete addition-reporting windows. It is the default in the reviewed
@@ -129,6 +135,13 @@ Lifecycle/component bindings need their own existing reviewed rules.
   that a UK or WECC observation represents the whole IAM region.
 - An equilibrium fallback assumes stationary past inflow and a declared finite
   age support. It is a sensitivity/prior, not recovered historical composition.
+- Schema-v2 equilibrium priors require `acknowledge_prior: true`. When the
+  reference year follows the first IAM year, `warm_start` initializes the legacy
+  prior at that first year and advances it with known IAM additions and stocks.
+  Outputs separately label prior-dependent and IAM-addition cohorts.
+- External evidence can be pinned through `evidence_manifest`. Each source entry
+  records its URL, version, observation year, download date, SHA-256, licence,
+  adapter version, and immutable local path. A mismatched checksum is fatal.
 
 ## Configuration example
 
@@ -222,8 +235,8 @@ The supplied 0.10/0.05 interest rates are financial inputs and are not used as
 physical retirement parameters. Two- and three-wheel mappings are skipped for
 the inspected EU21 MIF because it contains no matching `Stock`/`Sales` rows.
 
-For equilibrium initialization use `kind: equilibrium`, `maximum_age` (1–150)
-and provenance, without `file`. For observed service factors use
+For schema-v2 equilibrium initialization use `kind: equilibrium`, `maximum_age`
+(1–150), `acknowledge_prior: true` and provenance, without `file`. For observed service factors use
 `kind: observed_factors`, `future_factor`, `annual_age_decay` and provenance.
 An optional `maximum_service_per_stock` uses the configured service-unit per
 stock-unit ratio; `0.031536` EJ/yr per GW represents 8760 full-load hours.
@@ -252,6 +265,31 @@ Future and zero-weight cohorts are written explicitly as zero within coverage.
 Outside coverage values are missing, not zero or extrapolated. Exported shares
 are validated; the consumer never normalizes malformed shares. No overlapping
 parent/technology aggregates are inferred. Asset IDs and regions must be unique.
+
+## Canonical sidecar contract, version 2
+
+The canonical output is `<scenario>_stock_vintages_v2/`, containing:
+
+```text
+datapackage.json
+vintages.parquet
+vintages.csv.gz
+validation.json
+```
+
+The sparse long table uses `model, scenario, region, asset, year, cohort_year,
+metric, value, unit, evidence_basis`. Its unique key is the first seven fields.
+Metrics are limited to `stock`, `stock_share`, `service_share`, `service`,
+`addition`, `retirement_natural`, `retirement_additional`, and
+`legacy_unallocated`. Only the last may have a null cohort. Additions use their
+entry year and no retirement may target that cohort in the same year.
+
+`validation.json` reports numerical residuals, source precision, structural
+consistency, evidence coverage, and prior dependence separately with
+machine-readable pass/warning/fail statuses. Aggregate totals remain in that
+summary rather than being mixed with cohort rows. Parquet is canonical; the
+compressed CSV is an inspection copy. Package creation is finalized atomically
+and every resource has a SHA-256 in `datapackage.json`.
 
 ## CLI, reports and runtime consumption
 

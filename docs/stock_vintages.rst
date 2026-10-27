@@ -17,11 +17,14 @@ reproduction commands are in ``docs/remind-sector-expansion.md``.
 The command reads one model/scenario per file, checks exact variable names and
 units, and appends annual variables under ``Stock Vintage|v1|``. Its report pins
 source, observation and output hashes, software versions and assumptions.
+It also writes the canonical schema-v2 sidecar with sparse Parquet vintages, a
+compressed CSV mirror, a machine-readable validation contract, and a
+checksum-bound manifest. The wide schema-v1 variables remain compatible output.
 ``--filter-output`` keeps the enrichment namespace; ``--encrypt-to`` uses the
 existing premise-compatible encryption workflow. Preserve the associated JSON
 report and use the paired premise implementation branch.
 
-Choose a stock-driven, inflow-driven or joint annual reconstruction explicitly. Lifetimes
+Choose strict stock-flow, stock-driven, inflow-driven or joint annual reconstruction explicitly. Lifetimes
 can come from a scenario variable or a declared prior, with either fixed or
 Weibull survival. Initial observed survivors are conditioned on being alive at
 the reference year. In stock mode, additional exits either raise an error or

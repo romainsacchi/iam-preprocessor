@@ -123,7 +123,7 @@ def stock_vintages_command(
     key_file: Path | None = typer.Option(None, "--key-file", exists=True, readable=True),
     overwrite: bool = typer.Option(False, "--overwrite"),
 ) -> None:
-    """Reconstruct stock vintages with flodym and append premise-readable variables."""
+    """Reconstruct stock vintages and write v2 plus compatible v1 outputs."""
     _show_reports(
         [
             prepare_stock_vintages(
