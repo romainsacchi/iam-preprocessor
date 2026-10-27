@@ -15,6 +15,7 @@ from .io import read_frame, sha256_file, validate_frame, write_csv_atomic, year_
 from .report import ProcessingReport
 from .stock_config import load_stock_config
 from .stock_model import reconstruct, reconstruct_stock_flow, survival_matrix
+from .stock_package import write_vintage_package
 
 PREFIX = "Stock Vintage|v1|"
 
@@ -286,7 +287,7 @@ def _annualize_originals(frame, added_years):
     return pd.concat([frame, pd.DataFrame(additions, index=frame.index)], axis=1)
 
 
-def enrich_stock_vintages(frame, config):
+def enrich_stock_vintages(frame, config, *, return_v2=False):
     """Return an enriched table and diagnostics using a validated stock configuration.
 
     One model/scenario per file is required because premise discards those two
@@ -299,7 +300,7 @@ def enrich_stock_vintages(frame, config):
     if frame["Variable"].str.startswith("Stock Vintage|").any():
         raise DataValidationError("Input already contains stock-vintage enrichment.")
     ref, end = config["reference_year"], config["end_year"]
-    rows, diagnostics = [], []
+    rows, diagnostics, v2_rows = [], [], []
     for asset in config["assets"]:
         try:
             (
@@ -316,6 +317,40 @@ def enrich_stock_vintages(frame, config):
             raise DataValidationError(f"{asset['id']}/{asset['region']}: {exc}") from exc
         prefix = PREFIX + asset["id"] + "|"
         stock_unit = asset["stock"]["unit"]
+
+        def add_v2(
+            year,
+            cohort,
+            metric,
+            value,
+            unit,
+            *,
+            region=asset["region"],
+            asset_id=asset["id"],
+            initial_kind=asset["initial"]["kind"],
+        ):
+            if not np.isfinite(value) or value <= 0:
+                return
+            v2_rows.append(
+                {
+                    "model": config["model"],
+                    "scenario": config["scenario"],
+                    "region": region,
+                    "asset": asset_id,
+                    "year": int(year),
+                    "cohort_year": int(cohort),
+                    "metric": metric,
+                    "value": float(value),
+                    "unit": unit,
+                    "evidence_basis": (
+                        "iam_addition"
+                        if cohort > ref
+                        else "observed"
+                        if initial_kind == "observed_shares"
+                        else "prior"
+                    ),
+                }
+            )
 
         def add(suffix, unit, values, *, region=asset["region"], prefix=prefix, years=result.years):
             rows.append(
@@ -340,6 +375,36 @@ def enrich_stock_vintages(frame, config):
                     asset["service"]["unit"],
                     service_shares[:, j] * service_target,
                 )
+            for i, year in enumerate(result.years):
+                add_v2(year, cohort, "stock", result.stock[i, j], stock_unit)
+                add_v2(year, cohort, "stock_share", shares[i, j], "1")
+                add_v2(year, cohort, "service_share", service_shares[i, j], "1")
+                if service_target is not None:
+                    add_v2(
+                        year,
+                        cohort,
+                        "service",
+                        service_shares[i, j] * service_target[i],
+                        asset["service"]["unit"],
+                    )
+                if i and result.natural_exit_by_cohort is not None:
+                    add_v2(
+                        year,
+                        cohort,
+                        "retirement_natural",
+                        result.natural_exit_by_cohort[i, j],
+                        stock_unit + "/yr",
+                    )
+                if i and result.additional_exit_by_cohort is not None:
+                    add_v2(
+                        year,
+                        cohort,
+                        "retirement_additional",
+                        result.additional_exit_by_cohort[i, j],
+                        stock_unit + "/yr",
+                    )
+        for i, year in enumerate(result.years[1:], start=1):
+            add_v2(year, year, "addition", result.inflow[i], stock_unit + "/yr")
         totals = result.stock.sum(axis=1)
         add("Coverage", "1", np.ones(len(result.years)))
         add("Stock", stock_unit, totals)
@@ -364,6 +429,7 @@ def enrich_stock_vintages(frame, config):
             "maximum_absolute_inflow_residual": float(
                 np.max(np.abs(result.inflow[1:] - flows[1:]))
             ),
+            "maximum_stock_target": float(np.max(targets)),
             "total_additional_exits": float(np.sum(result.additional_exit[1:])),
             "negative_implied_exit_years": result.years[
                 np.isfinite(implied) & (implied < -1e-12)
@@ -393,6 +459,8 @@ def enrich_stock_vintages(frame, config):
         [c for c in enriched.columns if c not in year_columns(enriched)] + year_columns(enriched)
     ]
     validate_frame(enriched)
+    if return_v2:
+        return enriched, diagnostics, pd.DataFrame(v2_rows)
     return enriched, diagnostics
 
 
@@ -414,8 +482,9 @@ def prepare_stock_vintages(
     source, output_dir = Path(source), Path(output_dir)
     config = load_stock_config(config_path)
     destination = output_dir / f"{source.stem}_stock_vintages.csv"
+    package_path = output_dir / f"{source.stem}_stock_vintages_v2"
     report_path = output_dir / f"{source.stem}_stock_vintages_report.json"
-    paths = [destination, report_path]
+    paths = [destination, report_path, package_path]
     if encrypt_to is not None:
         paths.append(Path(encrypt_to) / destination.name)
     if len({p.resolve() for p in paths}) != len(paths):
@@ -423,7 +492,7 @@ def prepare_stock_vintages(
     if not overwrite and any(p.exists() for p in paths):
         raise IamPreprocessorError("Output already exists; use --overwrite to replace it.")
     frame = read_frame(source)
-    enriched, diagnostics = enrich_stock_vintages(frame, config)
+    enriched, diagnostics, v2 = enrich_stock_vintages(frame, config, return_v2=True)
     report = ProcessingReport(
         model=config["model"],
         input_path=str(source.resolve()),
@@ -432,6 +501,7 @@ def prepare_stock_vintages(
         derived_variables=sorted(set(enriched["Variable"]) - set(frame["Variable"])),
         assumptions={
             "stock_vintage_schema_version": 1,
+            "canonical_stock_vintage_schema_version": 2,
             "origin": "reconstructed_not_native",
             "scenario": config["scenario"],
             "reference_year": config["reference_year"],
@@ -486,6 +556,19 @@ def prepare_stock_vintages(
             )
     if filter_output:
         enriched = filter_variables(enriched)
+    write_vintage_package(
+        v2,
+        package_path,
+        source_path=source,
+        config_path=config_path,
+        config=config,
+        diagnostics=diagnostics,
+        overwrite=overwrite,
+    )
+    report.assumptions["vintage_package_path"] = str(package_path.resolve())
+    report.assumptions["vintage_package_manifest_sha256"] = sha256_file(
+        package_path / "datapackage.json"
+    )
     write_csv_atomic(enriched, destination, overwrite=overwrite)
     report.output_path, report.output_sha256 = str(destination.resolve()), sha256_file(destination)
     report.output_rows = len(enriched)

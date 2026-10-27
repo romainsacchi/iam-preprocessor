@@ -219,6 +219,16 @@ def test_filter_encrypt_and_cli_roundtrip(inputs, tmp_path):
         == (tmp_path / "out" / (source.stem + "_stock_vintages.csv")).read_bytes()
     )
     assert report["assumptions"]["origin"] == "reconstructed_not_native"
+    package = tmp_path / "out" / f"{source.stem}_stock_vintages_v2"
+    manifest = json.loads((package / "datapackage.json").read_text())
+    vintages = pd.read_parquet(package / "vintages.parquet")
+    assert manifest["schema_version"] == 2
+    assert set(vintages["metric"]) >= {
+        "stock",
+        "stock_share",
+        "addition",
+        "retirement_natural",
+    }
     assert filter_variables(plain).equals(plain)
     with pytest.raises(IamPreprocessorError, match="already exists"):
         prepare_stock_vintages(source, tmp_path / "out", config)
