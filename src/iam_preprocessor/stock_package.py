@@ -83,20 +83,31 @@ def validation_contract(diagnostics: list[dict]) -> dict:
     for diagnostic in diagnostics:
         scale = max(float(diagnostic.get("maximum_stock_target", 0)), 1.0)
         tolerance = max(1e-10, 1e-9 * scale)
-        numerical_value = max(
-            abs(diagnostic["maximum_balance_residual"]),
-            abs(diagnostic["maximum_absolute_stock_residual"]),
-            abs(diagnostic["maximum_absolute_inflow_residual"])
-            if diagnostic["mode"] == "stock_flow"
-            else 0,
-        )
+        mode = diagnostic["mode"]
+        numerical_values = [abs(diagnostic["maximum_balance_residual"])]
+        if mode in {"stock", "stock_flow"}:
+            numerical_values.append(abs(diagnostic["maximum_absolute_stock_residual"]))
+        if mode in {"inflow", "stock_flow"}:
+            numerical_values.append(abs(diagnostic["maximum_absolute_inflow_residual"]))
+        if mode == "joint":
+            numerical_values.append(
+                abs(diagnostic["annualisation"]["stock_anchor_max_absolute_residual"])
+            )
+            if diagnostic["annualisation"]["exact_inflow_constraints_feasible"]:
+                numerical_values.append(
+                    abs(diagnostic["annualisation"]["actual_sum_absolute_rate_residual"])
+                )
+        numerical_value = max(numerical_values)
         numerical = "pass" if numerical_value <= tolerance else "fail"
-        structural = (
-            "fail"
-            if diagnostic["negative_implied_exit_years"]
+        source_conflict = bool(
+            diagnostic["negative_implied_exit_years"]
             or diagnostic["implied_exits_exceed_opening_stock_years"]
-            else "pass"
+            or (
+                mode == "joint"
+                and not diagnostic["annualisation"]["exact_inflow_constraints_feasible"]
+            )
         )
+        structural = "warning" if source_conflict else "pass"
         observed_share = diagnostic.get("opening_evidence_share", 0.0)
         prior_share = diagnostic.get("opening_prior_share", 1.0 - observed_share)
         evidence = "pass" if observed_share >= 1 - 1e-9 else "warning"

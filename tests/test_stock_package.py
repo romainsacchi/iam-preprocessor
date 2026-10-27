@@ -5,7 +5,12 @@ import pytest
 
 from iam_preprocessor.exceptions import DataValidationError
 from iam_preprocessor.io import sha256_file
-from iam_preprocessor.stock_package import COLUMNS, validate_vintage_table, write_vintage_package
+from iam_preprocessor.stock_package import (
+    COLUMNS,
+    validate_vintage_table,
+    validation_contract,
+    write_vintage_package,
+)
 
 
 def table():
@@ -90,3 +95,31 @@ def test_package_is_checksum_bound_and_parquet_is_canonical(tmp_path):
     )
     validation = json.loads((destination / "validation.json").read_text())
     assert validation["status"] == "warning"  # interpolation precision is disclosed
+
+
+def test_joint_validation_uses_stock_anchors_and_marks_source_conflict_as_warning():
+    diagnostics = [
+        {
+            "asset": "pv",
+            "region": "DEU",
+            "mode": "joint",
+            "maximum_balance_residual": 1e-14,
+            "maximum_absolute_stock_residual": 100,
+            "maximum_absolute_inflow_residual": 10,
+            "maximum_stock_target": 100,
+            "negative_implied_exit_years": [2021],
+            "implied_exits_exceed_opening_stock_years": [],
+            "opening_evidence_share": 1,
+            "opening_prior_share": 0,
+            "annualisation": {
+                "stock_anchor_max_absolute_residual": 1e-12,
+                "exact_inflow_constraints_feasible": False,
+                "actual_sum_absolute_rate_residual": 10,
+            },
+        }
+    ]
+    result = validation_contract(diagnostics)
+    assert result["status"] == "warning"
+    checks = result["assets"][0]["checks"]
+    assert checks["numerical_residuals"]["status"] == "pass"
+    assert checks["structural_consistency"]["status"] == "warning"
