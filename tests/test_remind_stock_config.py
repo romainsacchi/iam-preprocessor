@@ -77,3 +77,20 @@ def test_defaults_exclude_known_aggregate_regions():
 def test_missing_requested_region_fails():
     with pytest.raises(DataValidationError, match="absent"):
         build_remind_stock_config(frame(), regions=["UKI"])
+
+
+def test_later_reference_year_uses_acknowledged_warm_start():
+    config, _ = build_remind_stock_config(
+        frame(), regions=["DEU"], reference_year=2006, end_year=2010
+    )
+    assert config["schema_version"] == 2
+    initial = config["assets"][0]["initial"]
+    assert initial == {
+        "kind": "warm_start",
+        "base_kind": "equilibrium",
+        "base_year": 2005,
+        "maximum_age": 30,
+        "acknowledge_prior": True,
+        "provenance": "Stationary historical-inflow legacy prior at the first IAM year, "
+        "advanced to the reference year using IAM stocks and additions.",
+    }

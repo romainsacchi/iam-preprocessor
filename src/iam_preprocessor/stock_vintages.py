@@ -68,8 +68,9 @@ def annual_inflows(series, years, timing):
 
 
 def _observations(initial, reference_year):
-    if initial["kind"] == "equilibrium":
-        return None, reference_year - initial["maximum_age"]
+    if initial["kind"] in {"equilibrium", "warm_start"}:
+        opening = initial.get("base_year", reference_year)
+        return None, opening - initial["maximum_age"]
     try:
         observed = pd.read_csv(initial["file"])
         if set(observed.columns) - {"cohort", "amount", "service_factor"}:
@@ -102,9 +103,11 @@ def _asset_result(frame, asset, reference_year, end_year):
 
         end_year = joint_horizon(stock_series, reference_year, end_year, asset["inflow_timing"])
     observed, first = _observations(asset["initial"], reference_year)
+    opening_year = asset["initial"].get("base_year", reference_year)
     years = np.arange(first, end_year + 1)
     service_years = np.arange(reference_year, end_year + 1)
     ref = reference_year - first
+    opening = opening_year - first
     stock_targets = interpolate(stock_series, service_years)
     if stock_targets[0] == 0 and observed is not None:
         raise DataValidationError(
@@ -123,8 +126,8 @@ def _asset_result(frame, asset, reference_year, end_year):
     parameter = "maximum" if lifetime["distribution"] == "remind" else "mean"
     initial_parameter = f"initial_{parameter}"
     lifetimes = np.full(len(years), float(lifetime[initial_parameter]))
-    lifetimes[ref + 1 :] = (
-        interpolate(_series(frame, asset["region"], lifetime["source"]), years[ref + 1 :])
+    lifetimes[opening + 1 :] = (
+        interpolate(_series(frame, asset["region"], lifetime["source"]), years[opening + 1 :])
         if "source" in lifetime
         else lifetime[parameter]
     )
@@ -133,13 +136,13 @@ def _asset_result(frame, asset, reference_year, end_year):
         lifetimes,
         distribution=lifetime["distribution"],
         shape=lifetime.get("shape"),
-        conditional_year=reference_year if observed is not None else None,
+        conditional_year=opening_year if observed is not None else None,
     )
     initial = np.zeros(len(years))
     factors = np.ones(len(years))
     weighting = asset["service_weighting"]
     if observed is None:
-        initial[: ref + 1] = sf[ref, : ref + 1]
+        initial[: opening + 1] = sf[opening, : opening + 1]
     else:
         positions = observed["cohort"].to_numpy(int) - first
         initial[positions] = observed["amount"].to_numpy(float)
@@ -153,10 +156,29 @@ def _asset_result(frame, asset, reference_year, end_year):
                 raise DataValidationError("Non-numeric observed service factors.") from exc
     if not np.isfinite(factors).all() or (factors < 0).any():
         raise DataValidationError("Service factors must be finite and nonnegative.")
-    if stock_targets[0] > 0:
-        initial *= stock_targets[0] / initial.sum()
+    opening_stock = interpolate(stock_series, [opening_year])[0]
+    if opening_stock > 0:
+        initial *= opening_stock / initial.sum()
     else:
         initial[:] = 0
+    if opening_year < reference_year:
+        warm_years = np.arange(opening_year, reference_year + 1)
+        warm_targets = interpolate(stock_series, warm_years)
+        warm_flows = np.r_[
+            0.0,
+            annual_inflows(flow_series, warm_years[1:], asset["inflow_timing"]),
+        ]
+        warm = reconstruct_stock_flow(
+            years=years[: ref + 1],
+            reference_year=opening_year,
+            initial=initial[: ref + 1],
+            survival=sf[: ref + 1, : ref + 1],
+            stock_targets=warm_targets,
+            inflow_targets=warm_flows,
+            exit_policy=asset["exit_policy"],
+        )
+        initial[:] = 0
+        initial[: ref + 1] = warm.stock[-1]
     if asset["mode"] == "stock_flow":
         result = reconstruct_stock_flow(
             years=years,
@@ -256,6 +278,17 @@ def _asset_result(frame, asset, reference_year, end_year):
         )
         if service_target is not None:
             service_target = service_target[:count]
+    basis_by_cohort = np.array(
+        [
+            "iam_addition"
+            if cohort > opening_year
+            else "observed"
+            if observed is not None
+            else "prior"
+            for cohort in result.cohorts
+        ],
+        dtype=object,
+    )
     return (
         result,
         stock_shares,
@@ -265,6 +298,7 @@ def _asset_result(frame, asset, reference_year, end_year):
         implied_exit,
         service_target,
         joint_diagnostics,
+        basis_by_cohort,
     )
 
 
@@ -312,6 +346,7 @@ def enrich_stock_vintages(frame, config, *, return_v2=False):
                 implied,
                 service_target,
                 joint_diagnostics,
+                basis_by_cohort,
             ) = _asset_result(frame, asset, ref, end)
         except DataValidationError as exc:
             raise DataValidationError(f"{asset['id']}/{asset['region']}: {exc}") from exc
@@ -327,7 +362,7 @@ def enrich_stock_vintages(frame, config, *, return_v2=False):
             *,
             region=asset["region"],
             asset_id=asset["id"],
-            initial_kind=asset["initial"]["kind"],
+            cohort_basis=None,
         ):
             if not np.isfinite(value) or value <= 0:
                 return
@@ -342,13 +377,7 @@ def enrich_stock_vintages(frame, config, *, return_v2=False):
                     "metric": metric,
                     "value": float(value),
                     "unit": unit,
-                    "evidence_basis": (
-                        "iam_addition"
-                        if cohort > ref
-                        else "observed"
-                        if initial_kind == "observed_shares"
-                        else "prior"
-                    ),
+                    "evidence_basis": cohort_basis if cohort_basis is not None else "iam_addition",
                 }
             )
 
@@ -376,9 +405,17 @@ def enrich_stock_vintages(frame, config, *, return_v2=False):
                     service_shares[:, j] * service_target,
                 )
             for i, year in enumerate(result.years):
-                add_v2(year, cohort, "stock", result.stock[i, j], stock_unit)
-                add_v2(year, cohort, "stock_share", shares[i, j], "1")
-                add_v2(year, cohort, "service_share", service_shares[i, j], "1")
+                basis = basis_by_cohort[j]
+                add_v2(year, cohort, "stock", result.stock[i, j], stock_unit, cohort_basis=basis)
+                add_v2(year, cohort, "stock_share", shares[i, j], "1", cohort_basis=basis)
+                add_v2(
+                    year,
+                    cohort,
+                    "service_share",
+                    service_shares[i, j],
+                    "1",
+                    cohort_basis=basis,
+                )
                 if service_target is not None:
                     add_v2(
                         year,
@@ -386,6 +423,7 @@ def enrich_stock_vintages(frame, config, *, return_v2=False):
                         "service",
                         service_shares[i, j] * service_target[i],
                         asset["service"]["unit"],
+                        cohort_basis=basis,
                     )
                 if i and result.natural_exit_by_cohort is not None:
                     add_v2(
@@ -394,6 +432,7 @@ def enrich_stock_vintages(frame, config, *, return_v2=False):
                         "retirement_natural",
                         result.natural_exit_by_cohort[i, j],
                         stock_unit + "/yr",
+                        cohort_basis=basis,
                     )
                 if i and result.additional_exit_by_cohort is not None:
                     add_v2(
@@ -402,6 +441,7 @@ def enrich_stock_vintages(frame, config, *, return_v2=False):
                         "retirement_additional",
                         result.additional_exit_by_cohort[i, j],
                         stock_unit + "/yr",
+                        cohort_basis=basis,
                     )
         for i, year in enumerate(result.years[1:], start=1):
             add_v2(year, year, "addition", result.inflow[i], stock_unit + "/yr")
@@ -430,6 +470,16 @@ def enrich_stock_vintages(frame, config, *, return_v2=False):
                 np.max(np.abs(result.inflow[1:] - flows[1:]))
             ),
             "maximum_stock_target": float(np.max(targets)),
+            "opening_prior_share": float(
+                result.stock[0, basis_by_cohort == "prior"].sum() / result.stock[0].sum()
+                if result.stock[0].sum()
+                else 0
+            ),
+            "opening_evidence_share": float(
+                result.stock[0, basis_by_cohort == "observed"].sum() / result.stock[0].sum()
+                if result.stock[0].sum()
+                else 0
+            ),
             "total_additional_exits": float(np.sum(result.additional_exit[1:])),
             "negative_implied_exit_years": result.years[
                 np.isfinite(implied) & (implied < -1e-12)

@@ -332,6 +332,11 @@ def test_strict_stock_flow_mode_preserves_both_input_series(inputs):
         "interpretation": "test",
         "provenance": "test",
     }
+    asset["service_weighting"] = {
+        "kind": "equal",
+        "annual_age_decay": 0,
+        "provenance": "test",
+    }
     path.write_text(yaml.safe_dump(config))
     enriched, diagnostics = enrich_stock_vintages(frame, load_stock_config(path))
     values = enriched.set_index("Variable")
@@ -341,6 +346,43 @@ def test_strict_stock_flow_mode_preserves_both_input_series(inputs):
     )
     assert diagnostics[0]["maximum_absolute_stock_residual"] < 1e-12
     assert diagnostics[0]["maximum_absolute_inflow_residual"] < 1e-12
+
+
+def test_warm_start_propagates_iam_additions_from_first_anchor(inputs):
+    frame, config, path, _ = inputs
+    frame.loc[frame.Variable.eq("Stock|Cars"), ["2020", "2025", "2030"]] = [10, 15, 20]
+    frame.loc[frame.Variable.eq("Sales|Cars"), ["2020", "2025", "2030"]] = [1, 1, 1]
+    config.update(schema_version=2, reference_year=2025)
+    asset = config["assets"][0]
+    asset.update(mode="stock_flow", exit_policy="error")
+    asset["initial"] = {
+        "kind": "warm_start",
+        "base_kind": "equilibrium",
+        "base_year": 2020,
+        "maximum_age": 20,
+        "acknowledge_prior": True,
+        "provenance": "test legacy prior",
+    }
+    asset["lifetime"] = {
+        "distribution": "fixed",
+        "initial_mean": 100,
+        "mean": 100,
+        "interpretation": "test",
+        "provenance": "test",
+    }
+    asset["service_weighting"] = {
+        "kind": "equal",
+        "annual_age_decay": 0,
+        "provenance": "test",
+    }
+    path.write_text(yaml.safe_dump(config))
+    _, diagnostics, vintages = enrich_stock_vintages(frame, load_stock_config(path), return_v2=True)
+    opening = vintages.loc[vintages["metric"].eq("stock") & vintages["year"].eq(2025)]
+    assert opening.groupby("evidence_basis")["value"].sum().to_dict() == {
+        "iam_addition": pytest.approx(5),
+        "prior": pytest.approx(10),
+    }
+    assert diagnostics[0]["opening_prior_share"] == pytest.approx(2 / 3)
 
 
 def test_new_cohort_exposure_changes_service_only(inputs):

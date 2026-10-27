@@ -97,8 +97,10 @@ def validation_contract(diagnostics: list[dict]) -> dict:
             or diagnostic["implied_exits_exceed_opening_stock_years"]
             else "pass"
         )
-        observed = diagnostic["configuration"]["initial"]["kind"] == "observed_shares"
-        evidence, prior = ("pass", "pass") if observed else ("warning", "warning")
+        observed_share = diagnostic.get("opening_evidence_share", 0.0)
+        prior_share = diagnostic.get("opening_prior_share", 1.0 - observed_share)
+        evidence = "pass" if observed_share >= 1 - 1e-9 else "warning"
+        prior = "pass" if prior_share <= 1e-9 else "warning"
         checks = {
             "numerical_residuals": {
                 "status": numerical,
@@ -112,11 +114,11 @@ def validation_contract(diagnostics: list[dict]) -> dict:
             "structural_consistency": {"status": structural},
             "evidence_coverage": {
                 "status": evidence,
-                "opening_composition": "observed" if observed else "prior",
+                "opening_evidence_share": observed_share,
             },
             "prior_dependence": {
                 "status": prior,
-                "opening_stock_prior_share": 0.0 if observed else 1.0,
+                "opening_stock_prior_share": prior_share,
             },
         }
         status = max((value["status"] for value in checks.values()), key=rank.get)

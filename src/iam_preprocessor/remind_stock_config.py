@@ -39,7 +39,27 @@ def _value_at(row, reference_year, labels):
     return float(np.interp(reference_year, list(map(int, labels)), values))
 
 
-def _common_asset(asset_id, region, stock, inflow, lifetime, maximum_age):
+def _common_asset(
+    asset_id, region, stock, inflow, lifetime, maximum_age, base_year, reference_year
+):
+    if base_year < reference_year:
+        initial = {
+            "kind": "warm_start",
+            "base_kind": "equilibrium",
+            "base_year": base_year,
+            "maximum_age": maximum_age,
+            "acknowledge_prior": True,
+            "provenance": "Stationary historical-inflow legacy prior at the first IAM year, "
+            "advanced to the reference year using IAM stocks and additions.",
+        }
+    else:
+        initial = {
+            "kind": "equilibrium",
+            "maximum_age": maximum_age,
+            "acknowledge_prior": True,
+            "provenance": "Stationary historical-inflow prior at the first scenario year; "
+            "no region-specific opening vintage observations were supplied.",
+        }
     return {
         "id": asset_id,
         "region": region,
@@ -51,12 +71,7 @@ def _common_asset(asset_id, region, stock, inflow, lifetime, maximum_age):
             "is the annual value in that year; missing annual values are linearly interpolated.",
         },
         "lifetime": lifetime,
-        "initial": {
-            "kind": "equilibrium",
-            "maximum_age": maximum_age,
-            "provenance": "Stationary historical-inflow prior at the first scenario year; "
-            "no region-specific opening vintage observations were supplied.",
-        },
+        "initial": initial,
         "mode": "stock_flow",
         "exit_policy": "error",
         "service_weighting": {
@@ -140,7 +155,7 @@ def build_remind_stock_config(
                         {"asset": asset_id, "region": region, "reason": "missing selector"}
                     )
                     continue
-                maximum = _value_at(rows[2], reference_year, labels)
+                maximum = _value_at(rows[2], anchors[0], labels)
                 maximum_age = math.ceil(maximum)
                 if maximum_age > 150:
                     raise DataValidationError(
@@ -154,7 +169,18 @@ def build_remind_stock_config(
                     "is max(0, 1 - (age/tau)^4) and mean lifetime is 4*tau/5.",
                     "provenance": "Technical note: Lifetimes in REMIND (2026-03-23).",
                 }
-                assets.append(_common_asset(asset_id, region, stock, inflow, lifetime, maximum_age))
+                assets.append(
+                    _common_asset(
+                        asset_id,
+                        region,
+                        stock,
+                        inflow,
+                        lifetime,
+                        maximum_age,
+                        anchors[0],
+                        reference_year,
+                    )
+                )
         if include_transport:
             for asset_id, mapping in transport_assets.items():
                 variable_suffix = mapping["variable_suffix"]
@@ -186,12 +212,21 @@ def build_remind_stock_config(
                     "as a physical survival parameter.",
                 }
                 assets.append(
-                    _common_asset(asset_id, region, stock, inflow, lifetime, service_life)
+                    _common_asset(
+                        asset_id,
+                        region,
+                        stock,
+                        inflow,
+                        lifetime,
+                        service_life,
+                        anchors[0],
+                        reference_year,
+                    )
                 )
     if not assets:
         raise DataValidationError("No complete stock/inflow/lifetime asset mappings were found.")
     config = {
-        "schema_version": 1,
+        "schema_version": 2,
         "model": model,
         "scenario": scenario,
         "reference_year": reference_year,

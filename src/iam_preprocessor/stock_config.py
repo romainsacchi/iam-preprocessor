@@ -64,8 +64,8 @@ def load_stock_config(path):
         ("schema_version", "model", "scenario", "reference_year", "end_year", "assets"),
         ("registries", "evidence_manifest"),
     )
-    if type(config["schema_version"]) is not int or config["schema_version"] != 1:
-        raise DataValidationError("Only stock configuration schema_version 1 is supported.")
+    if type(config["schema_version"]) is not int or config["schema_version"] not in (1, 2):
+        raise DataValidationError("Only stock configuration schema_version 1 or 2 is supported.")
     for key in ("model", "scenario"):
         nonempty(config[key], key)
     ref, end = (calendar_year(config[k]) for k in ("reference_year", "end_year"))
@@ -214,7 +214,11 @@ def load_stock_config(path):
                 "Choose fixed, Weibull with an explicit shape, or REMIND maximum lifetime."
             )
         initial = asset["initial"]
-        fields(initial, ("kind", "provenance"), ("file", "maximum_age"))
+        fields(
+            initial,
+            ("kind", "provenance"),
+            ("file", "maximum_age", "base_year", "base_kind", "acknowledge_prior"),
+        )
         nonempty(initial["provenance"], "initial stock provenance")
         if initial["kind"] == "observed_shares":
             if "file" not in initial or "maximum_age" in initial:
@@ -227,8 +231,29 @@ def load_stock_config(path):
                 raise DataValidationError(
                     "Equilibrium initialization needs maximum_age from 1 to 150."
                 )
+            if config["schema_version"] >= 2 and initial.get("acknowledge_prior") is not True:
+                raise DataValidationError(
+                    "Schema v2 equilibrium initialization requires acknowledge_prior: true."
+                )
+        elif initial["kind"] == "warm_start":
+            age, base = initial.get("maximum_age"), initial.get("base_year")
+            if (
+                initial.get("base_kind") != "equilibrium"
+                or type(age) is not int
+                or not 1 <= age <= 150
+                or type(base) is not int
+                or not 2005 <= base < ref
+                or initial.get("acknowledge_prior") is not True
+                or "file" in initial
+            ):
+                raise DataValidationError(
+                    "warm_start requires an acknowledged equilibrium base prior, maximum_age, "
+                    "and 2005 <= base_year < reference_year."
+                )
         else:
-            raise DataValidationError("Initial stock must use observed_shares or equilibrium.")
+            raise DataValidationError(
+                "Initial stock must use observed_shares, equilibrium or warm_start."
+            )
         service = asset["service_weighting"]
         fields(
             service,
