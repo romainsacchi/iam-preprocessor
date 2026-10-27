@@ -41,6 +41,25 @@ def load_remind_asset_registry():
         hierarchy = asset.get("hierarchy")
         if asset.get("sector") not in ASSET_SECTORS or hierarchy not in {"leaf", "aggregate"}:
             raise DataValidationError(f"Invalid REMIND asset mapping: {asset_id}")
+        if not isinstance(asset.get("aliases"), list) or not all(
+            isinstance(alias, str) and alias for alias in asset["aliases"]
+        ):
+            raise DataValidationError(f"Invalid aliases for REMIND asset: {asset_id}")
+        required = {"stock_unit", "inflow_unit", "capacity_basis"}
+        if not required.issubset(asset) or not all(
+            isinstance(asset[field], str) and asset[field] for field in required
+        ):
+            raise DataValidationError(f"Incomplete REMIND asset mapping: {asset_id}")
+        if asset["sector"] == "transport":
+            if not isinstance(asset.get("variable_suffix"), str) or not isinstance(
+                asset.get("service_life"), (int, float)
+            ):
+                raise DataValidationError(f"Incomplete transport mapping: {asset_id}")
+        else:
+            exact = {"stock_variable", "inflow_variable", "lifetime_variable"}
+            legacy = {"stock_suffix", "inflow_suffix", "lifetime_suffix"}
+            if not (exact.issubset(asset) ^ legacy.issubset(asset)):
+                raise DataValidationError(f"Incomplete capacity mapping: {asset_id}")
         if hierarchy == "aggregate" and not asset.get("children"):
             raise DataValidationError(f"Aggregate REMIND asset has no children: {asset_id}")
         if hierarchy == "leaf" and asset.get("children"):

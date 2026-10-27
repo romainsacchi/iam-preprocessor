@@ -13,7 +13,16 @@ from iam_preprocessor.stock_registry import (
 def test_asset_registry_contains_named_hierarchy_mappings():
     registry, _ = load_remind_asset_registry()
     assets = registry["assets"]
-    assert {row["sector"] for row in assets.values()} == {"power", "storage", "transport"}
+    assert {row["sector"] for row in assets.values()} == {
+        "carbon_management",
+        "gases",
+        "heat",
+        "hydrogen",
+        "liquids",
+        "power",
+        "storage",
+        "transport",
+    }
     assert {row["hierarchy"] for row in assets.values()} == {"leaf", "aggregate"}
     assert assets["pv"]["stock_suffix"] == "Solar|+|PV"
     assert assets["passenger-ldv-4w"]["service_life"] == 20

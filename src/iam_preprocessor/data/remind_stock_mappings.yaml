@@ -419,3 +419,173 @@ assets:
     inflow_unit: GW/yr
     capacity_basis: battery power capacity coupled to solar PV reported by REMIND
     aliases: []
+  hydrogen-electrolysis:
+    sector: hydrogen
+    hierarchy: leaf
+    stock_variable: Cap|Hydrogen|+|Electricity
+    inflow_variable: New Cap|Hydrogen|+|Electricity
+    lifetime_variable: Tech|Hydrogen|Electricity|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: hydrogen production capacity reported by REMIND
+    aliases: []
+  hydrogen-biomass-ccs:
+    sector: hydrogen
+    hierarchy: leaf
+    stock_variable: Cap|Hydrogen|Biomass|+|w/ CC
+    inflow_variable: New Cap|Hydrogen|Biomass|+|w/ CC
+    lifetime_variable: Tech|Hydrogen|Biomass|w/ CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: hydrogen production capacity reported by REMIND
+    aliases: []
+  hydrogen-biomass:
+    sector: hydrogen
+    hierarchy: leaf
+    stock_variable: Cap|Hydrogen|Biomass|+|w/o CC
+    inflow_variable: New Cap|Hydrogen|Biomass|+|w/o CC
+    lifetime_variable: Tech|Hydrogen|Biomass|w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: hydrogen production capacity reported by REMIND
+    aliases: []
+  hydrogen-coal-ccs:
+    sector: hydrogen
+    hierarchy: leaf
+    stock_variable: Cap|Hydrogen|Coal|+|w/ CC
+    inflow_variable: New Cap|Hydrogen|Coal|+|w/ CC
+    lifetime_variable: Tech|Hydrogen|Coal|w/ CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: hydrogen production capacity reported by REMIND
+    aliases: []
+  hydrogen-coal:
+    sector: hydrogen
+    hierarchy: leaf
+    stock_variable: Cap|Hydrogen|Coal|+|w/o CC
+    inflow_variable: New Cap|Hydrogen|Coal|+|w/o CC
+    lifetime_variable: Tech|Hydrogen|Coal|w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: hydrogen production capacity reported by REMIND
+    aliases: []
+  hydrogen-gas-ccs:
+    sector: hydrogen
+    hierarchy: leaf
+    stock_variable: Cap|Hydrogen|Gas|+|w/ CC
+    inflow_variable: New Cap|Hydrogen|Gas|+|w/ CC
+    lifetime_variable: Tech|Hydrogen|Gas|w/ CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: hydrogen production capacity reported by REMIND
+    aliases: []
+  hydrogen-gas:
+    sector: hydrogen
+    hierarchy: leaf
+    stock_variable: Cap|Hydrogen|Gas|+|w/o CC
+    inflow_variable: New Cap|Hydrogen|Gas|+|w/o CC
+    lifetime_variable: Tech|Hydrogen|Gas|w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: hydrogen production capacity reported by REMIND
+    aliases: []
+  heat-biomass:
+    sector: heat
+    hierarchy: leaf
+    stock_variable: Cap|Heat|+|Biomass
+    inflow_variable: New Cap|Heat|+|Biomass
+    lifetime_variable: Tech|Heat|Biomass|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: heat production capacity reported by REMIND
+    aliases: []
+  heat-coal:
+    sector: heat
+    hierarchy: leaf
+    stock_variable: Cap|Heat|+|Coal
+    inflow_variable: New Cap|Heat|+|Coal
+    lifetime_variable: Tech|Heat|Coal|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: heat production capacity reported by REMIND
+    aliases: []
+  heat-pump:
+    sector: heat
+    hierarchy: leaf
+    stock_variable: Cap|Heat|+|Electricity|Heat Pump
+    inflow_variable: New Cap|Heat|+|Electricity|Heat Pump
+    lifetime_variable: Tech|Heat|Electricity|Heat Pump|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: heat production capacity reported by REMIND
+    aliases: []
+  heat-gas:
+    sector: heat
+    hierarchy: leaf
+    stock_variable: Cap|Heat|+|Gas
+    inflow_variable: New Cap|Heat|+|Gas
+    lifetime_variable: Tech|Heat|Gas|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: heat production capacity reported by REMIND
+    aliases: []
+  gases-biomass:
+    sector: gases
+    hierarchy: leaf
+    stock_variable: Cap|Gases|+|Biomass
+    inflow_variable: New Cap|Gases|+|Biomass
+    lifetime_variable: Tech|Gases|Biomass|w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: gas production capacity reported by REMIND
+    aliases: []
+  gases-coal:
+    sector: gases
+    hierarchy: leaf
+    stock_variable: Cap|Gases|+|Coal
+    inflow_variable: New Cap|Gases|+|Coal
+    lifetime_variable: Tech|Gases|Fossil|Coal|w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: gas production capacity reported by REMIND
+    aliases: []
+  gases-hydrogen:
+    sector: gases
+    hierarchy: leaf
+    stock_variable: Cap|Gases|+|Hydrogen
+    inflow_variable: New Cap|Gases|+|Hydrogen
+    lifetime_variable: Tech|Gases|Hydrogen|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: gas production capacity reported by REMIND
+    aliases: []
+  liquids-oil:
+    sector: liquids
+    hierarchy: leaf
+    stock_variable: Cap|Liquids|+|Oil
+    inflow_variable: New Cap|Liquids|+|Oil
+    lifetime_variable: Tech|Liquids|Fossil|Oil|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: liquid fuel production capacity reported by REMIND
+    aliases: []
+  liquids-hydrogen:
+    sector: liquids
+    hierarchy: leaf
+    stock_variable: Cap|Liquids|+|Hydrogen
+    inflow_variable: New Cap|Liquids|+|Hydrogen
+    lifetime_variable: Tech|Liquids|Hydrogen|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: liquid fuel production capacity reported by REMIND
+    aliases: []
+  direct-air-capture:
+    sector: carbon_management
+    hierarchy: leaf
+    stock_variable: Cap|Carbon Management|DAC
+    inflow_variable: New Cap|Carbon Management|DAC
+    lifetime_variable: Tech|DAC|Lifetime
+    stock_unit: Mt CO2/yr
+    inflow_unit: Mt CO2/yr/yr
+    capacity_basis: annual direct-air-capture capacity reported by REMIND
+    aliases: [dac]
