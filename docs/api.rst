@@ -25,10 +25,21 @@ Model workflows
 Stock-vintage enrichment
 ------------------------
 
+The modules below follow the order in which data moves through the workflow.
+
+.. automodule:: iam_preprocessor.vintage_inputs
+   :members:
+
+.. automodule:: iam_preprocessor.vintage_reconstruction
+   :members:
+
 .. automodule:: iam_preprocessor.stock_vintages
    :members:
 
 .. automodule:: iam_preprocessor.stock_model
+   :members:
+
+.. automodule:: iam_preprocessor.flodym_stock
    :members:
 
 .. automodule:: iam_preprocessor.stock_annualisation
@@ -36,6 +47,9 @@ Stock-vintage enrichment
 
 .. automodule:: iam_preprocessor.stock_config
    :members: load_stock_config
+
+.. automodule:: iam_preprocessor.stock_package
+   :members:
 
 .. automodule:: iam_preprocessor.remind_stock_inventory
    :members:

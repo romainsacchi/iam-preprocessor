@@ -1,62 +1,44 @@
 Stock-vintage enrichment
 ========================
 
-Install ``iam-preprocessor[stocks]`` to use the optional flodym backend. The
-runtime consumer does not need flodym. The supported local examples use REMIND
-SSP2-NPi2025 for passenger BEVs, heavy trucks, PV and unabated CCGT, with an
-extension to liquid-fuel cars, onshore/offshore wind, nuclear, gas turbines,
-geothermal and CSP. Mappings, initial observations, unresolved boundaries and
-reproduction commands are in ``docs/remind-sector-expansion.md``.
+This workflow reconstructs the construction-year composition of an IAM stock.
+The result is preliminary: it is derived from installed stock, additions,
+lifetimes, and an explicit opening-stock assumption.
+
+Install the stock dependencies and inspect the input coverage:
 
 .. code-block:: console
 
+   python -m pip install -e '.[stocks]'
+   iam-preprocessor remind-stock-inventory scenario.mif -o stock-inventory.csv
    iam-preprocessor remind-stock-config scenario.mif -o stocks.yaml \
-     --region DEU --region FRA --region UKI --reconciliation joint
-   iam-preprocessor remind-stock-inventory scenario.mif -o stock-inventory.csv \
-     --region DEU --region FRA --region UKI
-   iam-preprocessor stock-vintages scenario.mif --config stocks.yaml -o output/stocks \
-     --package-only
+     --reconciliation joint
 
-The command reads one model/scenario per file, checks exact variable names and
-units, and appends annual variables under ``Stock Vintage|v1|``. Its report pins
-source, observation and output hashes, software versions and assumptions.
-It also writes the canonical schema-v2 sidecar with sparse Parquet vintages, a
-machine-readable validation contract, and a checksum-bound manifest.
-``--package-only`` omits the compressed CSV mirror and wide schema-v1
-compatibility output for large catalogues. The inventory command classifies all
-stock-like variables, including deliberately excluded aggregates and mappings
-blocked by ambiguous or missing lifetimes.
-``--filter-output`` keeps the enrichment namespace; ``--encrypt-to`` uses the
-existing premise-compatible encryption workflow. Preserve the associated JSON
-report and use the paired premise implementation branch.
+Build the canonical package:
 
-Choose strict stock-flow, stock-driven, inflow-driven or joint annual reconstruction explicitly. Lifetimes
-can come from a scenario variable or a declared prior, with either fixed or
-Weibull survival. Initial observed survivors are conditioned on being alive at
-the reference year. In stock mode, additional exits either raise an error or
-follow an explicitly selected proportional-exit assumption.
+.. code-block:: console
 
-Joint mode preserves original stock anchors while fitting smooth annual additions.
-REMIND ``New Cap`` and ``Sales`` are sampled annual values and are linearly
-interpolated. Generic period-average additions have different constraints.
-Strict mode rejects conflicting inflows; an explicit penalized policy reports
-their discrepancies. Fixed extra-exit fractions and full reporting windows remain
-visible in the report. The method and YAML options are documented in
-``docs/joint-stock-annualisation.md``.
+   iam-preprocessor stock-vintages scenario.mif --config stocks.yaml \
+     -o output/stocks --package-only
 
-Stock shares and service shares are distinct. Service weighting can use observed
-relative cohort factors, an age-decay sensitivity, explicit annual-age CSV
-profiles (``kind: age_profile``), and new-cohort service exposure. Age profiles
-advance initial and new cohorts along the same curve each year, with an explicit
-hold-last tail and a source checksum. Aggregate IAM service alone cannot identify relative cohort use.
-Original inventory coefficients and common amortisation remain unchanged.
+The calculation proceeds through focused modules:
 
-The complete YAML contract, equations, example and limitations are maintained in
-``docs/stock-vintages.md`` in the repository. The reproducible local campaign and
-acceptance checks are in ``docs/stock-vintage-validation.md``.
+#. ``vintage_inputs`` selects exact IAM rows and produces annual series.
+#. ``vintage_reconstruction`` prepares and reconstructs one asset.
+#. ``stock_model`` applies survival and stock-flow accounting.
+#. ``flodym_stock`` defines the lifetime models and runs the FLODyM stock solvers.
+#. ``stock_annualisation`` reconciles stock anchors and additions in joint mode.
+#. ``stock_vintages`` and ``stock_package`` assemble, validate, and write output.
 
-The implemented evidence package and empirical limitations are documented in
-``docs/remind-evidence-results.md``. Its frozen plan is
-``docs/remind-evidence-work-package.md`` and its source/validation rules in
-``docs/remind-evidence-protocol.md``. It addresses stock comparability,
-historical cohort evaluation and service weighting for the existing groups.
+FLODyM supplies the survival tables and projects cohorts from annual additions,
+including additions fitted in joint mode. Its stock-driven solver handles
+proportional, oldest-first, and hazard-scaled retirement. The joint fit uses
+SciPy and OSQP to reconcile the IAM inputs. The stock extra pins the revision from `FLODyM PR #261
+<https://github.com/pik-piam/flodym/pull/261>`_.
+
+The package contains a sparse Parquet vintage table, ``validation.json``, and a
+checksum-bound manifest. The processing report records the exact input,
+configuration, assumptions, software versions, and numerical diagnostics.
+
+See ``docs/stock-vintages.md`` in the repository for the equations, complete
+configuration example, evidence labels, output contract, and limitations.

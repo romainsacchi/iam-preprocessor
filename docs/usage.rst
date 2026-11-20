@@ -28,6 +28,22 @@ MESSAGE processing strips ``R12_`` from region labels and removes ``GLB``.
 REMIND processing removes legacy aggregate regions and splits cement production
 and energy into CCS and non-CCS portions.
 
+Stock vintages
+--------------
+
+Inspect REMIND coverage, create a configuration, and reconstruct annual cohorts:
+
+.. code-block:: console
+
+   iam-preprocessor remind-stock-inventory scenario.mif -o stock-inventory.csv
+   iam-preprocessor remind-stock-config scenario.mif -o stocks.yaml \
+       --reconciliation joint
+   iam-preprocessor stock-vintages scenario.mif --config stocks.yaml \
+       --output-dir output/stocks --package-only
+
+The result is a preliminary reconstruction from IAM variables and declared
+assumptions. See ``docs/stock-vintages.md`` for the method and limitations.
+
 Filtering and cryptography
 --------------------------
 
