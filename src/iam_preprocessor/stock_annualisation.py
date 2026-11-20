@@ -49,6 +49,7 @@ def joint_horizon(stock_series, reference_year, end_year, timing):
 
 
 def _flow_constraints(series, years, timing):
+    """Describe which annual additions must match each reported flow value."""
     rows, targets, metadata = [], [], []
     if timing["kind"] == "sampled_annual":
         for anchor in sorted(series):
@@ -59,6 +60,7 @@ def _flow_constraints(series, years, timing):
             targets.append(series[anchor])
             metadata.append({"kind": "sampled_annual", "anchor": anchor, "years": [anchor]})
     else:
+        # A reported period rate constrains the mean of the years in that period.
         for period in timing["periods"]:
             selected = (years >= period["start"]) & (years <= period["end"])
             if not selected.any():
@@ -87,33 +89,9 @@ def _independent_equalities(matrix, target):
     return matrix[pivots[:rank]], target[pivots[:rank]]
 
 
-def fit_annual_additions(
-    response,
-    initial_stock,
-    stock_targets,
-    flow_matrix,
-    flow_targets,
-    reference,
-    *,
-    inflow_constraints,
-    reference_weight,
-    inflow_weight,
-):
-    """Fit nonnegative inflows; stocks are hard, conflicting inflows explicit.
-
-    All quantities use one common stock scale. In penalized mode, incompatible
-    inflow observations receive a declared quadratic penalty. The minimum L1
-    rate discrepancy is also reported as a separate feasibility diagnostic.
-    """
-    scale = max(
-        float(np.max(stock_targets)),
-        float(np.max(flow_targets)),
-        float(np.max(initial_stock)),
-        1e-12,
-    )
-    stock_rhs = (stock_targets - initial_stock) / scale
-    flow_rhs, reference = flow_targets / scale, reference / scale
-    n, m = len(reference), len(flow_rhs)
+def _check_annual_fit_feasibility(response, stock_rhs, flow_matrix, flow_rhs, policy):
+    """Find which reported values can be matched with nonnegative additions."""
+    n, m = response.shape[1], len(flow_rhs)
     exact_a = np.vstack((response, flow_matrix))
     exact_b = np.r_[stock_rhs, flow_rhs]
     lp_options = {"primal_feasibility_tolerance": 1e-9, "dual_feasibility_tolerance": 1e-9}
@@ -127,34 +105,69 @@ def fit_annual_additions(
     )
     if feasible.status not in (0, 2):
         raise DataValidationError(f"Joint feasibility solver failed: {feasible.message}")
-    exact = feasible.success
-    minimum_residual = 0.0
-    if exact:
-        equality, target = _independent_equalities(exact_a, exact_b)
-    else:
-        if inflow_constraints == "strict":
-            raise DataValidationError(
-                "Infeasible stock/inflow constraints under the configured initial cohorts, "
-                "survival and fixed extra-exit fractions. Select penalized explicitly "
-                "to retain stock anchors and report inflow discrepancies."
-            )
-        slack_equality = np.pad(response, ((0, 0), (0, m)))
-        upper = np.vstack((np.c_[flow_matrix, -np.eye(m)], np.c_[-flow_matrix, -np.eye(m)]))
-        bound = np.r_[flow_rhs, -flow_rhs]
-        feasible = linprog(
-            np.r_[np.zeros(n), np.ones(m)],
-            A_eq=slack_equality,
-            b_eq=stock_rhs,
-            A_ub=upper,
-            b_ub=bound,
-            bounds=(0, None),
-            method="highs",
-            options=lp_options,
+    if feasible.success:
+        return exact_a, exact_b, True, 0.0
+
+    if policy == "strict":
+        raise DataValidationError(
+            "Infeasible stock/inflow constraints under the configured initial cohorts, "
+            "survival and fixed extra-exit fractions. Select penalized explicitly "
+            "to retain stock anchors and report inflow discrepancies."
         )
-        if not feasible.success:
-            raise DataValidationError(f"Joint stock-only feasibility failed: {feasible.message}")
-        minimum_residual = float(feasible.fun)
-        equality, target = _independent_equalities(response, stock_rhs)
+    # One slack value per flow observation measures its absolute mismatch.
+    slack_equality = np.pad(response, ((0, 0), (0, m)))
+    upper = np.vstack((np.c_[flow_matrix, -np.eye(m)], np.c_[-flow_matrix, -np.eye(m)]))
+    bound = np.r_[flow_rhs, -flow_rhs]
+    feasible = linprog(
+        np.r_[np.zeros(n), np.ones(m)],
+        A_eq=slack_equality,
+        b_eq=stock_rhs,
+        A_ub=upper,
+        b_ub=bound,
+        bounds=(0, None),
+        method="highs",
+        options=lp_options,
+    )
+    if not feasible.success:
+        raise DataValidationError(f"Joint stock-only feasibility failed: {feasible.message}")
+    return response, stock_rhs, False, float(feasible.fun)
+
+
+def fit_annual_additions(
+    response,
+    initial_stock,
+    stock_targets,
+    flow_matrix,
+    flow_targets,
+    reference,
+    *,
+    inflow_constraints,
+    reference_weight,
+    inflow_weight,
+):
+    """Fit nonnegative annual additions that match the reported stock.
+
+    Each column of response gives the stock left from one year's additions.
+    Each row corresponds to a year with a reported stock value. Penalized mode
+    allows a mismatch in reported additions and records the smallest possible
+    sum of absolute mismatches alongside the actual mismatch of the smooth fit.
+    """
+    # Work in relative units to handle fleets of very different sizes.
+    scale = max(
+        float(np.max(stock_targets)),
+        float(np.max(flow_targets)),
+        float(np.max(initial_stock)),
+        1e-12,
+    )
+    stock_rhs = (stock_targets - initial_stock) / scale
+    flow_rhs, reference = flow_targets / scale, reference / scale
+    required, required_values, exact, minimum_residual = _check_annual_fit_feasibility(
+        response, stock_rhs, flow_matrix, flow_rhs, inflow_constraints
+    )
+    equality, target = _independent_equalities(required, required_values)
+    n = len(reference)
+
+    # Penalize changes in the growth rate, while also staying close to the starting estimate.
     curvature = np.diff(np.eye(n), n=2, axis=0)
     hessian = curvature.T @ curvature + reference_weight * np.eye(n)
     linear = -2 * reference_weight * reference
@@ -163,13 +176,14 @@ def fit_annual_additions(
         linear -= 2 * inflow_weight * flow_matrix.T @ flow_rhs
     qp_feasible = linprog(
         np.zeros(n),
-        A_eq=exact_a if exact else response,
-        b_eq=exact_b if exact else stock_rhs,
+        A_eq=required,
+        b_eq=required_values,
         bounds=(0, None),
         method="highs",
     )
     if not qp_feasible.success:
         raise DataValidationError(f"Joint QP feasibility failed: {qp_feasible.message}")
+    # Give small and large reported values comparable weight in the solver's checks.
     equality_scale = 1 / np.maximum(np.abs(target), 1e-6)
     constraints = vstack(
         (csc_matrix(equality * equality_scale[:, None]), eye(n, format="csc")),
@@ -180,12 +194,14 @@ def fit_annual_additions(
     upper = np.r_[scaled_target, np.full(n, np.inf)]
 
     def objective(x):
+        """Score the smoothness of the additions and their fit to the inputs."""
         bending, deviation = curvature @ x, x - reference
         error = flow_matrix @ x - flow_rhs
         penalty = 0 if exact else inflow_weight * (error @ error)
         return bending @ bending + reference_weight * (deviation @ deviation) + penalty
 
     def solve_qp(tolerance, polishing):
+        """Start OSQP from a feasible path found by the linear solver."""
         solver = osqp.OSQP()
         solver.setup(
             P=csc_matrix(2 * hessian),
@@ -276,6 +292,7 @@ def fit_annual_additions(
         solver_status = "solved"
         solver_tolerance = None
         solver_name = "SciPy HiGHS feasibility / SciPy SLSQP penalized-QP fallback"
+    # Check all reported values, including constraints the solver omitted as redundant.
     stock_error = response @ values - stock_rhs
     errors = flow_matrix @ values - flow_rhs
     if np.max(np.abs(stock_error), initial=0) > 1e-8:
@@ -325,10 +342,15 @@ def reconstruct_joint(
     options,
     exit_policy="proportional",
 ):
-    """Fit annual entries, conditionally retaining baseline extra-exit fractions."""
+    """Fit annual additions and project the result through FLODyM.
+
+    When early retirements are allowed, keep the yearly fractions from the
+    stock-driven starting estimate fixed during the fit.
+    """
     years, cohorts = baseline.years, baseline.cohorts
     ref = int(np.flatnonzero(cohorts == years[0])[0])
     n = len(years)
+    # Calculate the fraction remaining after early retirement in each baseline year.
     retention = np.ones(n)
     opening_survivors = baseline.stock[:-1].sum(axis=1) - baseline.natural_exit[1:]
     retention[1:] -= np.divide(
@@ -342,7 +364,7 @@ def reconstruct_joint(
     retention = np.clip(retention, 0, 1)
     if exit_policy == "error":
         retention[:] = 1
-    # Linear response of the stock to each future entrant, including fixed exits.
+    # Track survivors from the opening stock and from each future year's additions.
     initial = np.zeros_like(baseline.stock)
     initial[0] = baseline.stock[0]
     response = np.zeros((n, n - 1))
@@ -356,6 +378,7 @@ def reconstruct_joint(
         initial[t] = initial[t - 1] * ratio * retention[t]
         response[t] = response[t - 1] * ratio[ref + 1 :] * retention[t]
         response[t, t - 1] = 1
+    # Only the years reported by the IAM are fixed stock targets in the joint fit.
     anchors = [t for t, y in enumerate(years) if t and y in stock_series]
     if not anchors:
         raise DataValidationError("Joint reconstruction requires a future stock anchor.")

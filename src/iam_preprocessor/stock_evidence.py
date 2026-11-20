@@ -142,6 +142,7 @@ def harmonize_observations(
         )
     if mode == "partial_observation" and observed_total > iam_stock * (1 + 1e-10):
         raise DataValidationError("Partial observations exceed the IAM opening stock.")
+    # A proxy supplies an age mix that is scaled to the IAM total.
     scale = iam_stock / observed_total if mode == "composition_proxy" and observed_total else 1.0
     selected["amount"] = values * scale
     dated = selected["cohort_year"].notna()
@@ -155,6 +156,7 @@ def harmonize_observations(
         if row.amount > 0
     ]
     if mode == "partial_observation" and iam_stock > observed_total:
+        # Keep uncovered stock visible even though it has no known build year.
         rows.append(
             {
                 "cohort_year": None,

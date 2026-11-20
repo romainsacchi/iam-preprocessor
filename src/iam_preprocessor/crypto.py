@@ -72,6 +72,7 @@ def load_fernet_key(key_file: str | Path | None = None) -> bytes:
 
 
 def _write_bytes_atomic(payload: bytes, destination: Path, overwrite: bool) -> Path:
+    """Write the bytes to a temporary file and replace the destination once complete."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists() and not overwrite:
         raise IamPreprocessorError(

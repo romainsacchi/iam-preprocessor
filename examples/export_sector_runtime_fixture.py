@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 def main():
+    """Read the stock package and export the fixture used by the sector runtime."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--premise-checkout", type=Path, required=True)
     parser.add_argument("--directory", type=Path, required=True)

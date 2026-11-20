@@ -50,6 +50,7 @@ def fit_vehicle_weibull(
     duration = closing_year - opening_year
 
     def residual(parameters):
+        """Compare predicted and observed stock across vehicle build years."""
         mean, shape = parameters
         scale = mean / gamma(1 + 1 / shape)
         predicted = np.exp(-(((ages + duration) / scale) ** shape - (ages / scale) ** shape))

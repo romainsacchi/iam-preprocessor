@@ -13,6 +13,7 @@ OBSERVED = {"generator_observed", "single_cohort_observed"}
 
 
 def _records(workbook, sheet):
+    """Yield source row numbers and records from an EIA workbook sheet."""
     rows = workbook[sheet].iter_rows(values_only=True)
     for row_index, values in enumerate(rows, 1):
         header = [" ".join(str(v).split()) if v is not None else "" for v in values]
@@ -113,6 +114,7 @@ def match_ids(stock, generation):
     """Identity only; accept zero padding after a unique one-to-one proof."""
 
     def alias(key):
+        """Normalize the numeric part of a generator ID for matching."""
         return (key[0], str(int(key[1])) if key[1].isdigit() else key[1])
 
     source, target = defaultdict(list), defaultdict(list)
@@ -168,7 +170,11 @@ def audit_service(
     bin_minimum=0.8,
     material_bin=0.05,
 ):
-    """Return raw matching ledger, completed factors and a coverage decision."""
+    """Compare observed generation with installed capacity by build year.
+
+    Return the generator matches, completed service weights and a coverage
+    check showing whether there is enough observed generation to use the weights.
+    """
     before = {(r["plant_id"], r["generator_id"]): r for r in previous}
     selected_keys = {(r["plant_id"], r["generator_id"]) for r in selected}
     matches = match_ids(all_records, generators)
@@ -186,6 +192,7 @@ def audit_service(
     hours = 8784 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 8760
 
     def eligible(r):
+        """Check whether a generator qualifies for the chosen service estimates."""
         old = before.get((r["plant_id"], r["generator_id"]))
         return (
             r["cohort"] is not None
@@ -198,6 +205,7 @@ def audit_service(
             and r.get("uprate_derate") != "Y"
         )
 
+    # Use direct generation observations when the generator was comparable all year.
     for r in selected:
         key = (r["plant_id"], r["generator_id"])
         matched, reason = matches[key]
@@ -217,7 +225,7 @@ def audit_service(
             source_row=raw.get("source_row"),
             full_year_eligible=eligible(r),
         )
-        if not eligible(r):
+        if not row["full_year_eligible"]:
             row["reason"] = "partial_year_or_status_capacity_change"
         elif matched is not None:
             if raw["prime_mover"] != r["prime_mover"] or raw["chp"] != "N":
@@ -231,6 +239,8 @@ def audit_service(
             else:
                 row.update(evidence="generator_observed", assigned_generation=value, reason=reason)
         ledger[key] = row
+    # Compare generator observations with plant totals and allocate a remaining
+    # amount only when the full group is represented.
     reconciliation = []
     for group, members in all_groups.items():
         chosen = [r for r in members if (r["plant_id"], r["generator_id"]) in selected_keys]
@@ -295,6 +305,7 @@ def audit_service(
             )
         )
     rows = list(ledger.values())
+    # Measure coverage by installed capacity so large and small units count in proportion.
     total = sum(r["capacity"] for r in rows)
     known = [r for r in rows if r["evidence"] in OBSERVED]
     usable = [r for r in rows if r["assigned_generation"] is not None]
@@ -318,6 +329,7 @@ def audit_service(
         known = []
     cohorts = defaultdict(lambda: [0.0, 0.0])
     bins = defaultdict(lambda: [0.0, 0.0])
+    # Complete the candidate weights with average use where generation is missing.
     for r in rows:
         if r["cohort"] is None:
             raise ValueError("Service factor needs dated stock")

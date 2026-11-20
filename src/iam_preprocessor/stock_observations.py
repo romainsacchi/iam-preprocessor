@@ -34,6 +34,7 @@ POWER_TECHNOLOGIES = {
 
 
 def ods_rows(path, sheet):
+    """Yield the visible text and raw numeric value of each cell in an ODS sheet."""
     with ZipFile(path) as archive:
         root = ET.fromstring(archive.read("content.xml"))
     table = next(
@@ -60,6 +61,7 @@ def ods_rows(path, sheet):
 
 
 def vehicle_count(cell):
+    """Convert a count recorded in thousands into a whole number of vehicles."""
     display, raw = cell
     if raw is None:
         raise ValueError(f"Missing numeric vehicle count: {display!r}")
@@ -123,6 +125,7 @@ def curate_liquid_cars(path, year=2022):
 
 
 def read_eia_generators(path, year=2022, *, all_sheets=False):
+    """Read generator records and preserve their original sheet and row numbers."""
     with ZipFile(path) as archive:
         workbook = load_workbook(
             BytesIO(archive.read(f"3_1_Generator_Y{year}.xlsx")), read_only=True, data_only=True
