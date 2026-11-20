@@ -308,7 +308,7 @@ def prepare_stock_vintages(
             "flodym_commit": flodym_origin.get("vcs_info", {}).get("commit_id"),
             "software_versions": {
                 name: version(name)
-                for name in ("iam-preprocessor", "flodym", "numpy", "pandas", "scipy", "osqp")
+                for name in ("iam-prep-for-premise", "flodym", "numpy", "pandas", "scipy", "osqp")
             },
             "implementation_sha256": {
                 name: sha256_file(Path(__file__).with_name(name))

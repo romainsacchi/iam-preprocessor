@@ -186,15 +186,15 @@ List the input rows, fill in the model and scenario names in the YAML, and
 check that the chosen rows are present.
 
 ```console
-iam-preprocessor stock-inventory scenario.csv -o stock-inventory.csv
-iam-preprocessor stock-config scenario.csv --mapping stock-mapping.yaml -o stocks.yaml
-iam-preprocessor stock-inventory scenario.csv --config stocks.yaml -o mapped-inputs.csv
+iam-prep-for-premise stock-inventory scenario.csv -o stock-inventory.csv
+iam-prep-for-premise stock-config scenario.csv --mapping stock-mapping.yaml -o stocks.yaml
+iam-prep-for-premise stock-inventory scenario.csv --config stocks.yaml -o mapped-inputs.csv
 ```
 
 Calculate the build-year shares.
 
 ```console
-iam-preprocessor stock-vintages scenario.csv --config stocks.yaml \
+iam-prep-for-premise stock-vintages scenario.csv --config stocks.yaml \
   -o output/stocks --package-only
 ```
 

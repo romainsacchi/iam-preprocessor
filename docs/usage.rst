@@ -8,7 +8,7 @@ Process files or every supported file directly inside a directory.
 
 .. code-block:: console
 
-   iam-preprocessor prepare INPUT... --output-dir OUTPUT
+   iam-prep-for-premise prepare INPUT... --output-dir OUTPUT
 
 By default, ``prepare`` puts the table in a standard format and keeps the rows
 listed in the export filter. Use ``--no-filter`` to keep every input row.
@@ -23,10 +23,10 @@ Choose an adapter when you need the corrections it applies to your model's file.
 
 .. code-block:: console
 
-   iam-preprocessor prepare INPUT... --output-dir OUTPUT --adapter image \
+   iam-prep-for-premise prepare INPUT... --output-dir OUTPUT --adapter image \
        --medium-bev-sec VALUE --heavy-bev-sec VALUE
-   iam-preprocessor prepare INPUT... --output-dir OUTPUT --adapter message
-   iam-preprocessor prepare INPUT... --output-dir OUTPUT --adapter remind
+   iam-prep-for-premise prepare INPUT... --output-dir OUTPUT --adapter message
+   iam-prep-for-premise prepare INPUT... --output-dir OUTPUT --adapter remind
 
 The IMAGE adapter estimates transport use from energy use. Use ``--sec-config``
 to load assumptions from YAML. Use ``--strict`` to stop if the calculation gives
@@ -43,10 +43,10 @@ List the input variables, check the YAML settings, and estimate the build-year g
 
 .. code-block:: console
 
-   iam-preprocessor stock-inventory scenario.csv -o stock-inventory.csv
-   iam-preprocessor stock-config scenario.csv --mapping stock-mapping.yaml -o stocks.yaml
-   iam-preprocessor stock-inventory scenario.csv --config stocks.yaml -o mapped-inputs.csv
-   iam-preprocessor stock-vintages scenario.csv --config stocks.yaml \
+   iam-prep-for-premise stock-inventory scenario.csv -o stock-inventory.csv
+   iam-prep-for-premise stock-config scenario.csv --mapping stock-mapping.yaml -o stocks.yaml
+   iam-prep-for-premise stock-inventory scenario.csv --config stocks.yaml -o mapped-inputs.csv
+   iam-prep-for-premise stock-vintages scenario.csv --config stocks.yaml \
        --output-dir output/stocks --package-only
 
 The estimate depends on the IAM data and assumptions. ``stock-inventory`` can
@@ -59,9 +59,9 @@ Filtering and cryptography
 
 .. code-block:: console
 
-   iam-preprocessor filter INPUT... --output-dir OUTPUT
-   iam-preprocessor encrypt SOURCE DESTINATION [--key-file KEY]
-   iam-preprocessor decrypt SOURCE DESTINATION [--key-file KEY]
+   iam-prep-for-premise filter INPUT... --output-dir OUTPUT
+   iam-prep-for-premise encrypt SOURCE DESTINATION [--key-file KEY]
+   iam-prep-for-premise decrypt SOURCE DESTINATION [--key-file KEY]
 
 Without ``--key-file``, these commands load ``PREMISE_KEY`` from the process
 environment or the nearest ``.env`` file. ``IAM_PREPROCESSOR_KEY`` remains

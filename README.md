@@ -1,9 +1,10 @@
-# iam-preprocessor
+# iam-prep-for-premise
 
-`iam-preprocessor` prepares energy and climate scenarios for `premise`. It also
-estimates when the assets in use in a given year were built. For example, it can
-estimate how much of the solar capacity still operating in 2040 was built in
-2025. [premise](https://github.com/polca/premise)
+Prepares IAM scenario files for premise and reconstructs the build-year mix of
+assets for dynamic LCA with TRAILS.
+
+For example, the tool can estimate how much of the solar capacity still
+operating in 2040 was built in 2025. [premise](https://github.com/polca/premise)
 
 The estimates are preliminary. They use reported capacity and additions,
 equipment lifetimes, and information about the assets already in use at the
@@ -28,15 +29,18 @@ source .venv/bin/activate
 python -m pip install -e '.[stocks]'
 ```
 
+Python imports use `iam_preprocessor`. Existing scripts can also use the
+`iam-preprocessor` command.
+
 ## Build stock vintages
 
 Inspect the variables, adapt the example YAML to your scenario, and run the
 reconstruction. Use one model and scenario per stock-vintage run.
 
 ```console
-iam-preprocessor stock-inventory scenario.csv -o stock-inventory.csv
-iam-preprocessor stock-config scenario.csv --mapping stock-mapping.yaml -o stocks.yaml
-iam-preprocessor stock-vintages scenario.csv --config stocks.yaml \
+iam-prep-for-premise stock-inventory scenario.csv -o stock-inventory.csv
+iam-prep-for-premise stock-config scenario.csv --mapping stock-mapping.yaml -o stocks.yaml
+iam-prep-for-premise stock-vintages scenario.csv --config stocks.yaml \
   -o output/stocks --package-only
 ```
 
@@ -80,7 +84,7 @@ Use `prepare` to put the table in a standard format and write a CSV. Use
 Use `--scenario` to select one scenario from a workbook with several runs.
 
 ```console
-iam-preprocessor prepare scenario.xlsx --output-dir processed --no-filter
+iam-prep-for-premise prepare scenario.xlsx --output-dir processed --no-filter
 ```
 
 The YAML files define which variables to read, how to name newly calculated

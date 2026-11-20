@@ -16,7 +16,7 @@ from .stock_workflow import write_stock_config, write_stock_inventory
 
 app = typer.Typer(
     no_args_is_help=True,
-    help="Transparent preprocessing of IAM scenario data for premise.",
+    help="Prepare IAM scenario files for premise and reconstruct stock by build year for TRAILS.",
 )
 
 

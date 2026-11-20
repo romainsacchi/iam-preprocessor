@@ -1,10 +1,9 @@
-iam-preprocessor
-================
+iam-prep-for-premise
+====================
 
-``iam-preprocessor`` prepares energy and climate scenarios for ``premise`` and
-estimates when the assets in each scenario were built. It works with data from
-integrated assessment models (IAMs). See ``docs/README.md`` for the guides and
-notes from earlier studies.
+Prepares IAM scenario files for premise and reconstructs the build-year mix of
+assets for dynamic LCA with TRAILS. See ``docs/README.md`` for the guides and notes
+from earlier studies.
 
 .. toctree::
    :maxdepth: 2

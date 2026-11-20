@@ -208,6 +208,7 @@ def write_vintage_package(
         resources.append(
             {"path": validation.name, "format": "json", "sha256": sha256_file(validation)}
         )
+        # This profile identifies the file format used by consumers of the package.
         manifest = {
             "profile": "iam-preprocessor-stock-vintages",
             "schema_version": SCHEMA_VERSION,

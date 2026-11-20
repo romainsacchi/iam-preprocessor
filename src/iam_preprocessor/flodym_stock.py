@@ -26,7 +26,7 @@ except ImportError as exc:
     if exc.name != "flodym":
         raise
     raise IamPreprocessorError(
-        "Install iam-preprocessor[stocks] to use the required FLODyM revision."
+        "Install iam-prep-for-premise[stocks] to use the required FLODyM revision."
     ) from exc
 
 

@@ -10,14 +10,14 @@ Install the tools, list the input variables, and check the stock settings.
 .. code-block:: console
 
    python -m pip install -e '.[stocks]'
-   iam-preprocessor stock-inventory scenario.csv -o stock-inventory.csv
-   iam-preprocessor stock-config scenario.csv --mapping stock-mapping.yaml -o stocks.yaml
+   iam-prep-for-premise stock-inventory scenario.csv -o stock-inventory.csv
+   iam-prep-for-premise stock-config scenario.csv --mapping stock-mapping.yaml -o stocks.yaml
 
 Calculate and save the build-year estimates.
 
 .. code-block:: console
 
-   iam-preprocessor stock-vintages scenario.csv --config stocks.yaml \
+   iam-prep-for-premise stock-vintages scenario.csv --config stocks.yaml \
      -o output/stocks --package-only
 
 The calculation uses these Python modules.
