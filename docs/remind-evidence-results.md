@@ -218,12 +218,8 @@ TRAILS `check_iam_enrichment.py` on the integration directory. Isolate caches an
 Brightway data; use a random local encryption test key and delete it after the
 checks. The campaign output includes the cache-isolation wrapper and logs.
 
-Finally generate the standalone assessment and figures:
-
-```bash
-MPLCONFIGDIR=/private/tmp/iam-evidence-mpl PYTHONPATH=src \
-  python examples/plot_remind_evidence_validation.py /path/to/new-output
-```
+The historical standalone assessment and figures were produced by the plotting
+script available in Git history at `0e2359b:examples/plot_remind_evidence_validation.py`.
 
 The historical completed output location was
 `/Users/romain/GitHub/trails/build/reports/remind-npi2025-evidence-validation`.
@@ -477,8 +473,6 @@ PYTHONPATH=src "$VINTAGE_PY" examples/run_remind_evidence_validation.py \
   --output-dir "$VINTAGE_RUN_ROOT/evidence"
 PYTHONPATH=src "$VINTAGE_PY" examples/validate_stock_output.py \
   "$VINTAGE_RUN_ROOT/evidence/REMIND_generic_SSP2-NPi2025_stock_vintages_report.json"
-MPLCONFIGDIR="$VINTAGE_RUN_ROOT/mpl" PYTHONPATH=src \
-  "$VINTAGE_PY" examples/plot_remind_evidence_validation.py "$VINTAGE_RUN_ROOT/evidence"
 ```
 
 If an exact backup is restored instead, use the original frozen manifest and

@@ -120,15 +120,16 @@ lifetime-allocation rules require separate justification.
 
 ## Reproduction and acceptance
 
-Install the stock extra and plotting dependencies, then run from the repository:
+Install the stock extra, then run from the repository:
 
 ```sh
 PYTHONPATH=src python examples/run_remind_sector_expansion.py \
   --archive /absolute/path/to/2026-10-10-pilots \
   --output-dir /absolute/path/to/empty-output
-PYTHONPATH=src python examples/plot_remind_sector_expansion.py \
-  /absolute/path/to/empty-output
 ```
+
+The plotting script for the historical report is available in Git history at
+`83cf844:examples/plot_remind_sector_expansion.py`.
 
 The archive manifest, original curated cohorts, raw DfT/EIA files and IAM input
 are SHA-256 pinned. The curation audit keeps selection, missing dates, initial CSV
