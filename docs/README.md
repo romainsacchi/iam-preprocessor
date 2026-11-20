@@ -11,7 +11,7 @@
 
 - How the tool estimates missing annual additions using reported stock and
   addition data. [Joint fit](joint-stock-annualisation.md)
-- How we check the estimates. [Validation plan](stock-vintage-validation.md)
+- How we check the estimates. [Tests with a REMIND scenario](stock-vintage-validation.md)
 - How the tool handles keys and private files. [Security](security.rst)
 
 ## Research records

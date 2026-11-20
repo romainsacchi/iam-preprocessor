@@ -6,6 +6,7 @@ installed stock, additions, lifetimes, and information about the assets already
 in use at the start. The estimates are preliminary.
 
 Install the tools, list the input variables, and check the stock settings.
+The starter YAML uses the same asset settings for every region in the scenario.
 
 .. code-block:: console
 
@@ -18,7 +19,7 @@ Calculate and save the build-year estimates.
 .. code-block:: console
 
    iam-prep-for-premise stock-vintages scenario.csv --config stocks.yaml \
-     -o output/stocks --package-only
+     -o output/stocks
 
 The calculation uses these Python modules.
 
@@ -34,9 +35,8 @@ joint fit uses SciPy and OSQP to estimate annual additions from the IAM input.
 The installation above uses the revision from
 `FLODyM PR #261 <https://github.com/pik-piam/flodym/pull/261>`_.
 
-The output includes a Parquet table, a summary of the checks, and a list of the
-output files. The run report records the inputs, settings, assumptions, software
-versions, and any differences from the reported values.
+The separate Parquet table contains the build-year estimates. The run report shows which
+inputs and settings were used and where the estimates differ from the input data.
 
 See ``docs/stock-vintages.md`` for the equations, example settings, output
 formats, and limitations.

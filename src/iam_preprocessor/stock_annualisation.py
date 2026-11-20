@@ -302,7 +302,7 @@ def fit_annual_additions(
     primal_residual = float(np.max(np.abs(equality @ values - target), initial=0))
     if stationarity > 2e-6 or primal_residual > 1e-8:
         raise DataValidationError(
-            "Annual fit failed its QP certificate: "
+            "Annual additions fit did not meet the solver tolerances: "
             f"dual_residual={stationarity:.6g}, primal_residual={primal_residual:.6g}, "
             f"objective={objective(values):.6g}, minimum={values.min():.6g}, "
             f"iterations={iterations}."

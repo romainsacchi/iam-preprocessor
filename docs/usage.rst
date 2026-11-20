@@ -40,6 +40,7 @@ Stock vintages
 --------------
 
 List the input variables, check the YAML settings, and estimate the build-year groups.
+The starter YAML applies each asset's settings to every region in the scenario.
 
 .. code-block:: console
 
@@ -47,11 +48,12 @@ List the input variables, check the YAML settings, and estimate the build-year g
    iam-prep-for-premise stock-config scenario.csv --mapping stock-mapping.yaml -o stocks.yaml
    iam-prep-for-premise stock-inventory scenario.csv --config stocks.yaml -o mapped-inputs.csv
    iam-prep-for-premise stock-vintages scenario.csv --config stocks.yaml \
-       --output-dir output/stocks --package-only
+       --output-dir output/stocks
 
 The estimate depends on the IAM data and assumptions. ``stock-inventory`` can
 list a file with several scenarios. Choose a single model and scenario before
-making the settings file and running the calculation. See
+making the settings file and running the calculation. The stock command reads
+the reported year columns and writes a separate Parquet package and report. See
 ``docs/stock-vintages.md`` for the method and limitations.
 
 Filtering and cryptography

@@ -44,7 +44,7 @@ IAM table + YAML configuration
 ```
 
 The corresponding public Python entry points are `read_iam_series`,
-`annual_additions`, `reconstruct_asset`, `enrich_stock_vintages`, and
+`annual_additions`, `reconstruct_asset`, `calculate_stock_vintages`, and
 `prepare_stock_vintages`.
 
 ## How the stock changes each year
@@ -180,6 +180,12 @@ may omit the model, scenario and years. `stock-config` fills in the model and
 scenario from the file and uses the available year range within 2005–2100. Set
 the years in the template or on the command line to use a shorter horizon.
 
+The template applies each asset's settings to every region in the scenario
+file. `stock-config` lists all asset and region pairs in the saved settings
+and stops if any pair is missing an input or has the wrong unit. Settings
+with an explicit `region` specify the assumptions for that region. Use
+regional settings when the starting age observations differ by region.
+
 ## Commands
 
 List the input rows, fill in the model and scenario names in the YAML, and
@@ -195,11 +201,10 @@ Calculate the build-year shares.
 
 ```console
 iam-prep-for-premise stock-vintages scenario.csv --config stocks.yaml \
-  -o output/stocks --package-only
+  -o output/stocks
 ```
 
-Omit `--package-only` to also write the older CSV format with one column per
-year. Use `--overwrite` to replace existing files.
+Use `--overwrite` to replace existing output files.
 
 ## REMIND lifetime test case
 
@@ -219,17 +224,13 @@ vintages.parquet
 validation.json
 ```
 
-Without `--package-only`, the tool also writes `vintages.csv.gz` and a CSV with
-one column per year.
-
 Each table row gives the model, scenario, region, asset, year in use, year built,
 type of result, value, unit, and where the estimate came from. Results include
 stock, shares of stock or use, additions, and retirements.
 
-The run report records the assumptions, software versions, warnings, and
-differences from the input figures. It also records file fingerprints so the
-same inputs, settings, and code can be identified later. Keep it with the output
-folder.
+The separate run report lists the assumptions and software versions and shows where the
+estimates differ from the input data. It also lists the SHA-256 hashes of the
+files used in the run.
 
 ## Service shares and later use
 
@@ -237,9 +238,11 @@ Stock share is the fraction of installed stock built in a given year. Service
 share is the fraction of annual use supplied by that group. Use can be assumed
 equal, based on observations, or described by a curve that varies with age.
 
-`premise` can use the shares to assign construction demand to build years.
-TRAILS can then follow that demand through the supply chain and calculate the
-impacts using the background data for those years.
+The proposed handoff keeps the annual shares in a separate file so `premise`
+can read the IAM scenario at its reported time steps. The mapping from asset
+groups to construction exchanges in `premise` is still to be defined. Once
+construction demand has dates, TRAILS can follow it through the supply chain
+and calculate the impacts using the background data for those years.
 
 ## Main limitations
 
@@ -261,6 +264,6 @@ the results depend on limited observations.
 ## Further detail
 
 - [Joint annualisation](joint-stock-annualisation.md)
-- [Validation strategy](stock-vintage-validation.md)
+- [Tests with a REMIND scenario](stock-vintage-validation.md)
 - [REMIND evidence results](remind-evidence-results.md)
 - [Documentation map](README.md)

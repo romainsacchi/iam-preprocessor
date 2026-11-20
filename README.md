@@ -1,16 +1,16 @@
 # iam-prep-for-premise
 
-Prepares IAM scenario files for premise and reconstructs the build-year mix of
-assets for dynamic LCA with TRAILS.
+Prepares IAM scenario files for [premise] and reconstructs the build-year mix of
+assets for dynamic LCA with [TRAILS].
 
 For example, the tool can estimate how much of the solar capacity still
-operating in 2040 was built in 2025. [premise](https://github.com/polca/premise)
+operating in 2040 was built in 2025.
 
 The estimates are preliminary. They use reported capacity and additions,
 equipment lifetimes, and information about the assets already in use at the
 start. The same workflow is designed for integrated assessment models (IAMs)
-used with `premise`, including REMIND, IMAGE, and MESSAGE. Each asset needs
-matching input rows and a documented lifetime assumption.
+used with `premise`, including [REMIND], [IMAGE], and [MESSAGE]. For each asset,
+choose the input rows and specify how long the assets last.
 
 ## Start here
 
@@ -21,7 +21,7 @@ matching input rows and a documented lifetime assumption.
 
 ## Installation
 
-Python 3.10 or newer is required.
+[Python] 3.10 or newer is required. Install the package with [pip].
 
 ```console
 python -m venv .venv
@@ -32,29 +32,151 @@ python -m pip install -e '.[stocks]'
 Python imports use `iam_preprocessor`. Existing scripts can also use the
 `iam-preprocessor` command.
 
-## Build stock vintages
+## Run the workflow
 
-Inspect the variables, adapt the example YAML to your scenario, and run the
-reconstruction. Use one model and scenario per stock-vintage run.
+### 1. Prepare the scenario file
+
+**For a scenario CSV for premise**, run `prepare` with its default filter. It
+puts the table in a standard format and keeps the rows selected for premise.
 
 ```console
-iam-prep-for-premise stock-inventory scenario.csv -o stock-inventory.csv
-iam-prep-for-premise stock-config scenario.csv --mapping stock-mapping.yaml -o stocks.yaml
-iam-prep-for-premise stock-vintages scenario.csv --config stocks.yaml \
-  -o output/stocks --package-only
+iam-prep-for-premise prepare scenario.xlsx -o output/premise
 ```
 
-`stock-inventory` lists the regions, variables, and units in the file. Copy and
-edit the template to specify the rows and assumptions for each asset.
-`stock-config` records the model and scenario names and checks that the rows
-match. `stock-vintages` writes the build-year estimates in a Parquet table, a
-summary of the checks, a list of the output files, and a run report.
-[Stock mapping template](examples/stock-mapping.yaml)
+This writes `output/premise/scenario_filtered.csv` and
+`output/premise/scenario_report.json`. If you only need the scenario CSV, stop
+here.
 
-Input files can be CSV, MIF, or Excel. Use one column per year. Start with
-observations of when existing assets were built, or state an assumption about
-their ages. The current workflow requires rows for both installed stock and
-additions.
+**To build stock vintages**, use `--no-filter` to keep the stock and addition
+rows needed in steps 2 and 3.
+
+```console
+iam-prep-for-premise prepare scenario.xlsx -o output/input --no-filter
+```
+
+This writes `output/input/scenario_processed.csv` and
+`output/input/scenario_report.json`. Use that CSV in steps 2 and 3. If you
+already have a CSV, MIF, or Excel file with one model and scenario, one column
+per year, and all the required rows, you can start at step 2 with that file.
+
+For a file with several scenarios, use `stock-inventory` to find the exact
+labels, then add `--scenario "Scenario label"` to `prepare`. Add
+`--model "Model label"` if the scenario name occurs under more than one model.
+See the [command-line guide](docs/usage.rst) for optional corrections to files
+from specific models.
+
+### 2. Choose the rows and assumptions for each asset
+
+#### Find the variables in your scenario
+
+```console
+iam-prep-for-premise stock-inventory output/input/scenario_processed.csv \
+  -o stock-inventory.csv
+```
+
+`stock-inventory` reads the scenario CSV from step 1 and creates
+`stock-inventory.csv`. Open this list to look up the exact variable names and
+units available in each region. The scenario CSV supplies the values for each
+year when you run the calculation in step 3.
+
+#### Copy and edit the settings template
+
+```console
+cp examples/stock-mapping.yaml stock-mapping.yaml
+```
+
+Edit `stock-mapping.yaml`, your copy of the
+[stock mapping template](examples/stock-mapping.yaml). For each asset, copy the
+installed stock variable name and unit from `stock-inventory.csv` into
+`stock`. Do the same for the additions variable under `inflow`. Set the
+lifetime, starting age mix, and calculation mode in this file.
+
+#### Generate the settings for this scenario
+
+```console
+iam-prep-for-premise stock-config output/input/scenario_processed.csv \
+  --mapping stock-mapping.yaml -o stocks.yaml
+```
+
+`stock-config` reads your edited `stock-mapping.yaml` and the scenario CSV.
+It fills in the model, scenario, and years, applies your settings to every
+region, and checks that the chosen rows are present. If a required row is
+missing, the command tells you which region and variable need attention.
+
+The result is `stocks.yaml`, the settings file you pass to `stock-vintages`
+in step 3. To change your choices, edit `stock-mapping.yaml` and rerun
+`stock-config` with `--overwrite`.
+
+### 3. Calculate and save stock by build year
+
+```console
+iam-prep-for-premise stock-vintages output/input/scenario_processed.csv \
+  --config stocks.yaml -o output/stocks
+```
+
+The command reads the scenario file and writes the results separately.
+The scenario keeps its reported year columns.
+
+```text
+output/stocks/
+  scenario_processed_stock_vintages_report.json
+  scenario_processed_stock_vintages_v2/
+    vintages.parquet
+    datapackage.json
+    validation.json
+```
+
+- Each row of the **Parquet table** gives a region, asset, year in use, build
+  year, and result type. The package also has a file list and a summary of the
+  stock and share checks.
+- The **run report** shows the settings used and any differences between the
+  estimates and the reported IAM values.
+
+The proposed handoff gives premise the IAM scenario on its reported year grid
+and supplies the annual build-year shares in a separate file. How premise will
+match those shares to construction exchanges is still open.
+
+## How the stock calculation works
+
+Set `mode` for each asset in the YAML. The
+[starter YAML](examples/stock-mapping.yaml) uses `mode: stock`, so the example
+above is stock-driven. In this mode, [FLODyM] calculates how much needs to be
+built each year to reach the installed stock after retirements. The reported
+additions provide a comparison.
+
+```mermaid
+flowchart TD
+    inputs["IAM stock and additions<br/>Starting ages and lifetimes"] --> mode{"Mode in the YAML"}
+    mode -->|stock| stock["FLODyM infers additions<br/>from installed stock"]
+    mode -->|inflow| inflow["FLODyM projects stock<br/>from reported additions"]
+    mode -->|stock_flow| balance["Keep both annual series<br/>and work out early retirements"]
+    mode -->|joint| fit["SciPy checks what can be matched<br/>OSQP fits annual additions"]
+    fit --> projection["FLODyM projects stock<br/>from the fitted additions"]
+    stock --> results["Stock and shares by build year"]
+    inflow --> results
+    balance --> results
+    projection --> results
+    results -.-> premise["Proposed premise step<br/>Match shares to construction exchanges"]
+    premise -.-> trails["TRAILS follows construction demand<br/>and calculates impacts over time"]
+```
+
+`joint` is optional and is useful when the IAM reports stock and additions
+at intervals. [SciPy] checks whether both can be matched given the starting
+stock and retirement assumptions. [OSQP] then chooses a smooth series of annual
+additions that matches the reported stock levels. It also matches the reported
+additions whenever possible. This repo runs the fit and passes the fitted
+additions to FLODyM, which then makes an additions-driven projection.
+
+If the two series cannot both be matched, `annualisation.inflow_constraints`
+sets what happens. With `strict`, the run stops. With `penalized`, the fit
+keeps the reported stock levels and the run report shows any differences in
+additions. See the
+[joint fit guide](docs/joint-stock-annualisation.md) for the settings.
+
+In stock-driven runs, normal retirements can leave more capacity than the IAM
+reports. Jakob Dürrwächter's FLODyM changes let the model retire some of that
+capacity early, for example by increasing the retirement risk for that year.
+The installation uses that FLODyM revision. [FLODyM PR #261](https://github.com/pik-piam/flodym/pull/261)
 
 ## How the code is divided
 
@@ -68,30 +190,13 @@ additions.
 | `stock_annualisation.py` | Fit annual additions to reported stock and addition data. |
 | `stock_vintages.py` and `stock_package.py` | Check and write the results for all selected assets. |
 
-FLODyM tracks the assets built in each year as they age and retire. In `joint`
-mode, SciPy and OSQP first estimate annual additions using both the stock and
-addition data. The installation command above uses a specific FLODyM revision
-for reproducible results. [FLODyM PR #261](https://github.com/pik-piam/flodym/pull/261)
-
 Every IAM uses the same YAML format for the stock calculation. Optional code
-that corrects input files lives under `adapters/`. The older REMIND stock
-mapping tools live under `research/remind/` for reproducing past studies.
+that corrects input files lives under `adapters/`.
 
-## Prepare scenario files
+## Tests and documentation
 
-Use `prepare` to put the table in a standard format and write a CSV. Use
-`--no-filter` to retain all rows for stock reconstruction.
-Use `--scenario` to select one scenario from a workbook with several runs.
-
-```console
-iam-prep-for-premise prepare scenario.xlsx --output-dir processed --no-filter
-```
-
-The YAML files define which variables to read, how to name newly calculated
-variables, and what to keep when filtering. Optional corrections for specific
-models are listed in the [command-line guide](docs/usage.rst).
-
-## Development checks
+Use [Ruff] for linting and formatting, [pytest] for tests, and [Sphinx] to build
+the documentation.
 
 ```console
 ruff check src tests examples
@@ -105,3 +210,17 @@ generated results, and encryption keys. Use `--overwrite` to replace existing
 outputs.
 
 The project uses the BSD 3-Clause License.
+
+[premise]: https://github.com/polca/premise
+[TRAILS]: https://trails.readthedocs.io/en/latest/index.html
+[REMIND]: https://www.pik-potsdam.de/en/institute/departments/transformation-pathways/models/remind
+[IMAGE]: https://www.pbl.nl/en/image/about
+[MESSAGE]: https://docs.messageix.org/en/stable/
+[Python]: https://www.python.org/
+[pip]: https://pip.pypa.io/en/stable/
+[FLODyM]: https://github.com/pik-piam/flodym
+[SciPy]: https://scipy.org/
+[OSQP]: https://osqp.org/
+[Ruff]: https://docs.astral.sh/ruff/
+[pytest]: https://docs.pytest.org/en/stable/
+[Sphinx]: https://www.sphinx-doc.org/en/master/

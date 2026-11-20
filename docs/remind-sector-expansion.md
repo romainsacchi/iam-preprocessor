@@ -39,7 +39,7 @@ Use the archived ODS numeric values rather than rounded display strings. Known
 first-use-year counts plus unknown counts must equal the published fuel total.
 The combined observed stock is 30,846,413 cars; 442,363 have unknown first-use year.
 Unknown dates are assigned in proportion to known dates for the model input;
-the unaltered quantities and missing-date fraction remain in the audit.
+the observation summary gives the original quantities and the share with missing dates.
 No survival weighting is applied to the observed initial composition.
 
 REMIND provides a **combined Liquids fleet**, not separate petrol and diesel
@@ -58,8 +58,8 @@ and out-of-service records: the example selects `Status == OP`, the 50 states
 plus DC, and explicit non-CHP records. Generator IDs must be unique within plants.
 For each excluded category, we recorded the number of entries and total capacity. Dates and positive
 capacity are checked before aggregation. Observed totals are not substituted for
-IAM totals: only cohort shares are scaled. The audit reports the IAM-to-observed
-stock ratio so large boundary or calibration mismatches remain visible.
+IAM totals: only cohort shares are scaled. The observation summary compares the
+IAM stock with the observed stock.
 
 Offshore wind starts from only **two generator records**, representing 42 MW;
 these are not turbine counts. US coverage improves the geographical match over
@@ -106,9 +106,8 @@ service does not identify cohort-specific mileage or capacity factors. Power
 cases must respect 0.031536 EJ/yr per GW (8,760 hours). Optional cases violating
 this bound are recorded in `rejected-sensitivities.json` and not exported. A
 failure in the main case, an incorrect variable name or unit, or a failed calculation stops the run.
-Pinned OSQP performs the convex quadratic solve after an independent HiGHS
-feasibility check; stock conservation and solver-certificate tolerances are
-never relaxed.
+HiGHS checks whether the constraints can be met. OSQP then fits annual additions,
+and the code checks that the result balances stock and meets the solver tolerances.
 
 Each new group includes primary, linear-stock, inflow-only, ±25% maximum lifetime,
 and low/high inflow-penalty cases. Existing groups retain their original broader
@@ -118,7 +117,7 @@ this feature distributes an existing burden over cohort dates under common
 amortisation. Technology-specific production coefficients and different
 lifetime-allocation rules require separate justification.
 
-## Reproduction and acceptance
+## How to repeat the example
 
 Install the stock extra, then run from the repository:
 
@@ -137,7 +136,7 @@ which entries were used, missing dates, starting-stock files, and input variable
 names. The run report records the settings, code, observations, and outputs.
 Keep both reports. Keep private scenarios and observations outside Git.
 
-Check that the saved CSV preserves reported stock values, that shares are
+Check that the saved Parquet results match the reported stock values, that shares are
 nonnegative and sum to one when stock is present, and that future cohorts have
 no stock. Check the stock balance, differences across each full reporting
 period, and survival of the starting stock independently. The PDF and CSV tables
@@ -146,17 +145,16 @@ unfiltered, filtered, encrypted, and cached results. The test from `premise` to
 TRAILS uses the calculated shares with made-up inventories and with background
 data that are either constant or change over time.
 
-The runtime loader expects the filename `remind_SSP2-NPi2025.csv`; create a link
-to the generated CSV in each of the unfiltered, filtered and encrypted test
-directories. The ordinary `stock-vintages` command can generate the latter two
-with `--filter-output` and `--encrypt-to`. Use an ephemeral test key and remove
-it after testing. `examples/export_sector_runtime_fixture.py` accepts
+The earlier premise and TRAILS trial used CSV outputs from the preprocessor at
+commit `b971964`. Its runtime loader expects the filename
+`remind_SSP2-NPi2025.csv` in each of the unfiltered, filtered, and encrypted test
+directories. `examples/export_sector_runtime_fixture.py` accepts
 `--premise-checkout` and `--directory` (the campaign output). It uses the test
 export script in the corresponding `premise` branch and covers all eleven main groups.
 Run premise's `dev/stock_vintage/check_iam_enrichment_runtime.py` for all cases
 and TRAILS' `dev/stock_vintage/check_iam_enrichment.py` on the resulting
 `integration` directory. The inventory amounts used here are examples for
-testing. Production processes would need separately reviewed links.
+testing. A run with production data needs links to the corresponding processes.
 
 ## Deferred groups and next priorities
 
@@ -171,12 +169,12 @@ existing eleven groups.
 |---|---|---|
 | Separate petrol/diesel trajectories | Native fleet is combined | Keep combined profile and tests with different starting ages; require declared split before linking the fuels to separate inventory exchanges |
 | Hybrids/PHEVs | Native Hybrid electric versus UK HEV/PHEV/range-extender mapping | Inspect archived reporter technology definitions; avoid merging categories by name |
-| Gas/FCEV vehicles | Gas/LPG/bi-fuel boundary and sparse initial cohorts | Audit native categories and DfT selections; use explicit sensitivity if initial support is weak |
+| Gas/FCEV vehicles | Gas/LPG/bi-fuel boundary and sparse initial cohorts | Compare the IAM and DfT categories. Test alternative starting ages if observations are sparse. |
 | Hydro | Conventional versus pumped-storage boundary | Compare EIA conventional/pumped classes with native aggregate capacity; do not sum blindly |
-| Coal/biomass | CHP, CCS and technology aggregates | Build tables matching the most detailed technology categories without overlap and audit plant technology/fuel/CHP fields |
+| Coal/biomass | CHP, CCS and technology aggregates | Match detailed categories in the two sources and check plant technology, fuel, and CHP status. |
 | Battery storage | GW versus GWh assets; duration and cycle ageing | Separate converter and energy stocks, define service and initialize each independently |
-| Heat/hydrogen/industry | Equipment boundary, service unit and initial cohorts | Audit native capacity/additions/lifetime availability before choosing a prior |
-| Buildings/roads/water | No reviewed mapping to the reported stock variables in this pilot | Continue the separate observation-based infrastructure strategy |
+| Heat/hydrogen/industry | Equipment boundary, service unit and initial cohorts | Find the available capacity, additions, and lifetime data before estimating starting ages. |
+| Buildings/roads/water | Matching stock variables are missing from this example | Continue using observations for the separate infrastructure example. |
 
 The accepted regional proxies are not treated as a blocker. The most useful
 improvements within current data are: tables matching the IAM's technology categories, age-specific

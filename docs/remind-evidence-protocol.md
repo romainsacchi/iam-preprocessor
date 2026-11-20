@@ -1,11 +1,10 @@
-# REMIND evidence protocol: inputs, historical tests and service decisions
+# REMIND data and methods
 
-Status: proposed protocol for the planned
-[evidence work package](remind-evidence-work-package.md). Freeze a versioned copy
-before computing new evaluation scores. The numerical coverage cutoffs below
-are declared engineering selection rules, not statistical confidence levels.
+This note describes the data and methods proposed in the
+[REMIND research plan](remind-evidence-work-package.md). The coverage thresholds
+state how much observed data was needed to use each method.
 
-## 1. Verified source inventory and preservation
+## 1. Source files
 
 Existing archive root:
 
@@ -17,7 +16,7 @@ The original REMIND source is
 `iam-inputs/remind 3.5.2/REMIND_generic_SSP2-NPi2025.mif`, SHA-256
 `b19b71690d672b5e5cc2e908eeb5486fe723103f6ab6c852cdffc45486feb6dd`.
 
-| Source | SHA-256 verified during planning | Current location |
+| Source | SHA-256 hash | Location at the time of the study |
 |---|---|---|
 | `eia8602020.zip` | `ce519fd0b02c74b8c4231dc023bf07f922ae5f2a018fcaf88914502f61aa89ea` | `/private/tmp/stock-data-campaign/` |
 | `eia8602021.zip` | `ac35e582335ed5f82c1177361d6e8e82cff083ae85a5ec668815d21e0aef3ee5` | `/private/tmp/stock-data-campaign/` |
@@ -25,12 +24,9 @@ The original REMIND source is
 | `f923_2022.zip` | `2f030b7da3802b9310ecd93ef98014890d3519e6d1db55e5a49173121e5e82e4` | Existing archive, `public-sources/` |
 | `veh1111.ods` | `bc3529975f7fa9e12181b64397cb1e619ae78926130146b64f5c35b9e268d1cc` | Existing archive, `public-sources/` |
 
-Archive a new snapshot with its own file list before implementation relies on
-files in `/private/tmp`. Verify copies against these pins. Referencing an older
-immutable snapshot by hash is acceptable; overwriting it is not. Pin any newly
-acquired mileage or generation source independently, including its release,
-retrieval date, units and any revisions. The source file list must not contain
-cryptographic keys or credentials.
+Copy files out of `/private/tmp` for later runs and compare their hashes with
+the table. Save new versions separately and record the release, download date,
+units, and revisions for any new mileage or generation data.
 
 Observed layouts:
 
@@ -42,25 +38,25 @@ Observed layouts:
 - EIA-923's relevant workbook is
   `EIA923_Schedules_2_3_4_5_M_12_2022_Final_Revision.xlsx`. The inspected sheets
   include `Page 4 Generator Data`, `Page 1 Generation and Fuel Data` and the
-  published file layout. Headers are on row 6 in this pinned edition. Match
-  fields with a validated layout adapter, not a universal row-number assumption.
+  published file layout. In this edition, the column headings are on row 6.
+  Find them by name when reading other editions.
 - VEH1111 contains UK year-end rows for cars and HGVs in 2014–2025. First-use
   year and manufacture year are distinct concepts. ODS numeric values are counts
   expressed in thousands; preserve low counts and unknown first-use dates.
 
-## 2. Standard observation and checking records
+## 2. Fields in the observations
 
 Retain generator records before aggregating to cohorts. The minimum fields are:
 
 | Fields | Meaning |
 |---|---|
-| `source_sha256`, `source_member`, `sheet`, `source_row` | Trace a value to the pinned source |
+| `source_sha256`, `source_member`, `sheet`, `source_row` | Locate the original value |
 | `observation_year`, `observation_date`, `revision` | Timing and data edition |
 | `plant_id`, `generator_id`, `raw_generator_id`, `unit_id` | Source identity, preserving original labels |
 | `source_technology`, `prime_mover`, `fuel`, `chp`, `status`, `geography` | Selection and mapping evidence |
 | `capacity`, `capacity_unit`, `capacity_basis` | Nameplate/seasonal capability, AC/DC/unknown |
 | `cohort_year`, `cohort_date_kind`, `operating_month` | Entry proxy and partial-year information |
-| `asset_id`, `mapping_version`, `selection_reason` | Reviewed classification or exclusion |
+| `asset_id`, `mapping_version`, `selection_reason` | Asset group and reason the record was included or excluded |
 
 Vehicle records use geography, body type, fuel, observation year and first-use
 cohort, with known counts, unknown counts and independently published totals.
@@ -91,7 +87,7 @@ The protocol evaluates three different questions. Keep their results separate.
 Experiment B is available only where gross additions can be supported independently
 of the target closing cohort table. If commissioning records are recovered from
 later EIA files, label the exercise retrospective and conditioned on those records;
-audit short-lived entrants and coverage changes. Do not infer additions by
+check for short-lived entrants and changes in coverage. Do not infer additions by
 subtracting held-out survivors or defining every youngest closing cohort as sales.
 If such identification fails, report B as unsupported and complete A/C.
 
@@ -244,8 +240,8 @@ Proposed rules to freeze before inspecting the new match scores:
 - A fully matched but geographically or technologically narrow population remains
   a proxy. In particular, offshore's two generator records do not support broad
   empirical claims even if their matching coverage is 100%.
-- Existing PV/CCGT observed factors undergo the same audit. Preserve their baseline
-  for comparison; retain, replace or downgrade their evidence status explicitly.
+- Compare the earlier PV and CCGT factors with the new estimates and record
+  which factors the observations support.
 - Every candidate must conserve shares and aggregate service, retain stock outputs,
   and respect the per-cohort physical bound after scenario scaling. Failing cases
   are recorded and excluded from default export; weights are not silently clipped.
@@ -280,19 +276,16 @@ policy before adding an opt-in configuration kind. Test movement along the age
 curve as cohorts age. Keep existing configuration behavior and consumer output
 file formats compatible.
 
-## 7. Files to save and results to check
+## 7. Results and comparisons
 
-Each candidate export records the evidence snapshot, protocol version, mapping
-version, implementation hashes, chosen service method, coverage, imputation and
-fallback. The historical report lists data supplied versus withheld for each
-experiment. Preserve failed cases and old defaults as explicit comparisons.
+The report lists which observations each experiment used and which were saved
+for comparison. It also shows how the estimate allocates use by age, how much
+observed data was available, and how missing values were filled in.
 
-Accounting checks include nonnegative finite stocks/shares, normalized shares
-for positive-service cases, chronological validity, stock balance, unchanged
-native IAM values, explicit source-inflow residuals, exact eligible generation
-reconciliation and conserved inventory amounts per unit of output. Use scaled floating-point
-tolerances consistent with existing tests; integer vehicle counts reconcile
-exactly before modelling allocations.
+Compare the estimated stock and additions with the reported IAM values. Check
+that stock balances, shares sum to one where there is stock or use, and
+generation matches the observations used in the estimate. Check that spreading
+construction across years preserves the total inventory amount per unit of output.
 
 Keep the existing `Stock Vintage|v1|` output format. Run existing tests and add
 checks for how the files are read, records are matched, historical ages are
@@ -313,5 +306,5 @@ artifacts. No source data, test encryption keys or private scenarios are committ
 - [EIA-923](https://www.eia.gov/electricity/data/eia923/): generator versus plant/
   prime-mover generation reporting and historical files.
 - [DfT vehicle licensing tables](https://www.gov.uk/government/statistical-data-sets/vehicle-licensing-statistics-data-tables):
-  VEH1111/VEH0520 catalogue. Exact years and layouts above were checked in the
-  pinned local files, rather than inferred from the current download listing.
+  VEH1111/VEH0520 catalogue. The years and layouts above come from the files used
+  in the study.

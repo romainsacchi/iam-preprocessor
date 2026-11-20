@@ -1,17 +1,12 @@
-# Validation strategy: one REMIND scenario
+# Testing the workflow with one REMIND scenario
 
-## Objective and boundaries
+## Scenario and inputs
 
-Implement the flodym-backed producer and its premise/TRAILS consumer route for
-**SSP2-NPi2025 only**. Work on separate branches; retain existing pilot work and
-the unrelated PyPSA experiment. Use the current local IAM files and already
-curated observations. Do not contact providers or claim exact native vintages.
+This example tests the FLODyM reconstruction and follows its results through
+premise and TRAILS for **SSP2-NPi2025**. It starts with the archived REMIND
+scenario and observations of the stock in use in 2022.
 
-The scenario MIF is pinned by SHA-256 in the existing private evidence archive.
-The campaign imports only each pilot's reference-year observed cohort state;
-its old future projections are not inputs to the new reconstruction.
-
-## Asset decisions and unresolved evidence
+## Stock inputs and assumptions by asset
 
 | Group | Existing inputs used | Explicit reconstruction choice | Remaining uncertainty |
 | --- | --- | --- | --- |
@@ -19,7 +14,7 @@ its old future projections are not inputs to the new reconstruction.
 | Heavy trucks, EUR | REMIND liquid-fuel 40-tonne stock/sales/service; UK articulated diesel 32–40 t cohorts | REMIND serviceLife 15 years used as Weibull mean, with shape 3 an explicit non-REMIND assumption; equal service initially | Matching by weight and fuel, distance driven, weight carried, and trips without cargo, older/unknown registration dates, territorial exits versus disposal |
 | PV, USA | REMIND PV capacity/new capacity/generation/lifetime; selected US-WECC crystalline plant cohorts and output | Native REMIND maximum-lifetime survival `max(0, 1-(age/tau)^4)`; initial observed output/capacity factors | Regional/system/AC–DC boundary; future degradation and curtailment allocation |
 | CCGT, USA | REMIND unabated combined-cycle capacity/additions/generation/lifetime; selected non-CHP WECC blocks | Native REMIND maximum-lifetime survival; explicit proportional additional exits in stock mode | Dispatch, idle versus retired capacity, refurbished/old units and selective retirement; no gas-wide idle variable assigned to CCGT |
-| Water infrastructure | Existing Quebec pipe/storage observations and reviewed pilot | Keep separate external-data constant-stock scenario | No reviewed matching REMIND stock/additions series; no IAM-derived water forecast |
+| Water infrastructure | Existing Quebec pipe and storage observations | Use the separate constant-stock example | Matching stock and additions data for a REMIND forecast are missing |
 
 The 20/15-year transport values come from REMIND `serviceLife`; treating them as
 Weibull means with shape 3 remains a modelling assumption in this historical pilot.
@@ -43,7 +38,7 @@ the primary value 10. Of 44 proposed cases, 43 pass; CCGT age-decay is explicitl
 rejected for exceeding the physical service limit. It is absent from exported
 profiles and documented in `rejected-sensitivities.json`.
 
-## Three release requirements
+## What the tests cover
 
 ### 1. Correct boundaries and conserved coefficients
 
@@ -53,12 +48,12 @@ and units. They reject missing annual coverage rather than reusing a neighboring
 year. Verify signed demands +1 and -2, repeated/reversed years, physical dates
 before the inventory horizon, and zero-weight future cohorts.
 
-Keep existing reviewed component, replacement and disposal rules separate.
+The existing rules for components, replacement, and disposal apply separately.
 This feature does not supply a new physical retirement/disposal model or apply
 parent weights automatically to every component. The complete earlier licensed
 pilots remain unchanged; their lifecycle regression tests still apply.
 
-### 2. Defensible reconstruction and uncertainty
+### 2. Stock reconstruction and sensitivity to assumptions
 
 Test replacing assets with a fixed lifetime against a result calculated by hand.
 Compare equivalent cases with FLODyM. Check survival of the starting stock,
@@ -86,8 +81,8 @@ coverage. Analytical tests cover five/ten-year windows and legacy compatibility.
 
 ### 3. Tests that run from preprocessing through TRAILS
 
-Use the actual enriched SSP2-NPi2025 file through premise's real IAM reader,
-including source/report verification and cached reads. Test filtering and
+Read the enriched SSP2-NPi2025 scenario with premise and compare fresh and
+cached results. Test filtering and
 Fernet encryption through the public preprocessing CLI. Feed the four primary
 profiles to the actual premise matrix/datapackage exporter, then load in TRAILS
 with annual interpolation and explicit stock-vintage opt-in.
@@ -110,19 +105,20 @@ python examples/run_remind_stock_pilot.py \
   --output-dir /path/to/new-local-evidence --end-year 2050
 ```
 
-The script writes local initial-cohort CSVs, an explicit YAML config, one enriched
-scenario, its JSON report, a source file list, mean-age tables and two PDF/PNG
-figures. Output must be a new/empty directory. No scenario or observation data
-is shipped in Git. The standard CLI can also be used with a hand-reviewed config.
+The script writes local initial-cohort CSVs, a YAML config, a separate vintage
+package, its JSON report, a source file list, mean-age tables and two PDF/PNG
+figures. Choose an empty output directory. The standard CLI can also run with
+a stock settings file you prepare yourself.
 
-For runtime export, give the scenario an accepted premise filename, preserving
+For the earlier runtime trial, generate the combined scenario CSV using the
+preprocessor at commit `b971964`. Give that file an accepted premise filename, preserving
 its bytes, and use the paired premise branch's
 `dev/stock_vintage/export_iam_enrichment_fixture.py`. Then run the paired TRAILS
 branch's `dev/stock_vintage/check_iam_enrichment.py` on the integration output.
 These scripts identify their inventory as synthetic. Use separate local
 Brightway directories via `BRIGHTWAY2_DIR` when running tests using those example datasets.
 
-Required checks:
+The following commands run the tests and build the documentation.
 
 ```console
 ruff check src tests examples
@@ -132,13 +128,12 @@ sphinx-build -W -b html docs docs/_build/html
 ```
 
 Premise has dedicated `test_iam_stock_vintage.py` tests plus the existing
-stock-vintage export suite. TRAILS retains its stock-vintage/lifecycle regression
-suites and supplies the independent integration checker. Store executed results,
-exact revisions, hashes and remaining limitations with the local artifacts.
+stock-vintage export suite. TRAILS runs its own tests and checks the data it
+receives from premise.
 
-## Supported horizon and priorities after this release
+## Time range and open questions
 
-The reviewed example covers **2022–2050**. The engine supports explicitly declared
+The example covers **2022–2050**. The engine supports explicitly declared
 annual periods through 2100, but that is an interface limit, not proof that the
 later REMIND reporting transformations are reconstructed correctly. The generic
 irregular-window test checks arithmetic only. Before extending the actual power

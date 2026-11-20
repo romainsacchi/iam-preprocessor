@@ -1,14 +1,12 @@
-# REMIND evidence work package: implementation plan for priorities 1–3
+# REMIND research plan
 
-**Implementation:** completed on `feat/stock-evidence-validation`. See
-[results, decisions and reproduction instructions](remind-evidence-results.md).
-The frozen protocol remains unchanged.
-
-Status: implemented. Original plan prepared 2026-10-10 against
+The work was completed on `feat/stock-evidence-validation`. See
+[results and instructions for repeating the study](remind-evidence-results.md).
+The original plan was prepared on 2026-10-10 against
 `feat/stock-sector-expansion`, baseline commit
 `83cf844b169a9057131cf906941488701b58a50d`.
 
-## Objective and bounded scope
+## Questions and scope
 
 Strengthen the eleven existing stock-vintage groups by (1) explaining differences
 between observed and IAM stocks, (2) evaluating historical cohort reconstruction,
@@ -18,13 +16,9 @@ better estimate. Keep REMIND SSP2-NPi2025 as the sole scenario and retain the
 
 Groups: passenger BEVs, heavy trucks, liquid-fuel passenger cars, PV, CCGT,
 onshore wind, offshore wind, nuclear, gas turbines, geothermal and CSP.
-The accepted UK-to-EUR and existing WECC-to-USA proxies remain permitted, with
-a clear record of sources. No additional REMIND-team data is required.
-
-The principal deliverable is a reproducible, per-group evidence assessment with
-qualified profile updates. Completion does not require every candidate method
-to outperform the current model. A documented negative result or a justified
-fallback is a valid outcome; an unmeasured improvement claim is not.
+Some European estimates use UK observations, and some US estimates use WECC
+observations. For each asset group, compare the new estimates with the earlier
+results and explain where observations support a change.
 
 This package does not fit new retirement laws, optimize additional retirements,
 create separate petrol/diesel scenario trajectories, add new asset sectors,
@@ -32,7 +26,7 @@ change capital-production coefficients, or implement component replacement.
 Those belong to later work packages. Meaningful defects found in the existing
 accounting can be corrected with dedicated regression tests and change records.
 
-## Baseline and verified starting point
+## Earlier results used for comparison
 
 The existing campaign has 11 primary groups, 93 accepted cases, 2,697 annual
 profiles, 61 passing tests and 176 signed-demand consumer checks. Its production
@@ -47,7 +41,7 @@ Current code and consequences:
   panel spanning several years. Generalize this reader before backtesting.
 - At the start of the study, `run_remind_sector_expansion.py` listed technology
   variable names in Python and assumed 2022 starting shares. The plan was to put
-  the reviewed names and source definitions in a YAML file for both checks and runs.
+  the variable names and source definitions in a YAML file for both checks and runs.
 - `stock_vintages.py` already supports observed initial service factors and a
   declared factor for future entrants. It can consume the first power-service
   improvements without a change to the output variable names or file format.
@@ -60,8 +54,8 @@ Current code and consequences:
 
 ## Data already available
 
-A pinned data inventory, fields and experimental rules are in
-[the evidence protocol](remind-evidence-protocol.md).
+The files, fields, and methods are listed in
+[REMIND data and methods](remind-evidence-protocol.md).
 
 | Input | Verified availability | Use in this package |
 |---|---|---|
@@ -70,7 +64,7 @@ A pinned data inventory, fields and experimental rules are in
 | EIA-923 2022 | Archived ZIP; generator and plant/prime-mover generation sheets inspected | Relative power-service factors and coverage assessment |
 | UK DfT VEH1111 | Archived ODS contains year-end observations for 2014–2025 | BEV, liquid-car and HGV cohort histories; unknown-date accounting |
 | DfT VEH0520 | Archived detailed HGV file | Fleet-boundary and weight-class checks; not a mileage source |
-| Existing PV/CCGT curation and service audit | Earlier premise pilot scripts | Reuse audited matching/block logic after generalization, with tests |
+| Existing PV and CCGT data preparation | Earlier premise example scripts | Reuse the code that matches records and groups generators into blocks |
 
 First promote the temporary 2020/2021 EIA files into a new immutable evidence
 snapshot, verify their existing hashes and write a new file list. Do not edit the
@@ -118,7 +112,7 @@ REMIND-team request is needed.
    evidence and unresolved remainder. Overlapping explanations must not be summed
    as though they were independent contributions.
 
-### Results and checks
+### Results to compare
 
 - `stock-asset-mappings.yaml`, `stock-comparison.csv`, `stock-discrepancies.json`.
 - Per-group 2020–2022 plots: observed totals, native anchors, interpolated values,
@@ -237,7 +231,7 @@ Names below are proposed implementation targets, not existing public APIs.
 
 | Location | Responsibility |
 |---|---|
-| `src/iam_preprocessor/stock_observations.py` | Year-aware source readers; lossless identities/statuses; raw audit records |
+| `src/iam_preprocessor/stock_observations.py` | Read observations by year and keep the original IDs and statuses |
 | `src/iam_preprocessor/research/remind/data/remind_stock_assets.yaml` | Exact variable names, what the sources cover, and evidence labels |
 | `src/iam_preprocessor/stock_history.py` | Match records between years and record past events |
 | `src/iam_preprocessor/stock_validation.py` | Run historical tests and keep the comparison data out of the estimates |
@@ -255,35 +249,23 @@ documentation and small made-up test datasets.
 
 ## Order of work
 
-| Increment | Work | Dependency | Reviewable result |
+| Step | Work | Uses results from | Output |
 |---|---|---|---|
-| A | Freeze protocol, preserve baseline, promote sources, add year-aware readers | None | New source file list; observation schema and parsing tests |
-| B | Exact asset mappings and same-year stock audit | A | Eleven-group discrepancy report; unresolved mappings classified |
-| C | Panels and historical evaluation | A and reviewed B boundaries | Frozen holdout metrics; failure analysis; no claimed totals prediction where totals were supplied |
-| D | Generation matching and vehicle-usage assessment | A and reviewed B boundaries | Data coverage, proposed use factors, and a record of alternative assumptions |
+| A | Save the starting results and add readers for the source files | | Source file list and tests for reading observations |
+| B | Match asset groups and compare stock totals for the same year | A | Stock differences and unmatched variables across eleven groups |
+| C | Compare estimates with later observations | A and B | Errors by asset group, with a note where the model used the totals as inputs |
+| D | Match generation and vehicle use data | A and B | Data coverage, proposed use factors, and alternative assumptions |
 | E | Select use factors and run the current scenario | C and D | Compare results before and after the changes and record which assumptions to keep |
 | F | Test the full workflow and write the report | E | Independently checked output, figures, report, and list of files |
 
-C and D can proceed independently once their boundaries are fixed. Changes are
-kept on the isolated feature branch; use separate commits for each increment.
-No external publication or communication is part of this package.
+C and D can run independently after the asset groups are defined.
 
-## Checks before the study is complete
+## Comparing the results
 
-- All eleven groups have a stock-comparison diagnosis, a historical evaluation
-  result or explicit evidence limitation, and a service-weighting decision.
-- Supported factors are exported; unsupported groups retain explicit proxies or
-  equal-service assumptions with quantified sensitivities where possible.
-- Every result can be reproduced from the new immutable evidence snapshot and
-  a versioned campaign configuration. Held-out outcomes and promotion decisions
-  are traceable; no failure disappears from the report.
-- Run the old and new tests. Check the saved inputs, stocks, and shares and
-  compare filtered, encrypted, and cached results. Repeat the checks with
-  positive and negative demand for the main groups that changed.
-- A report compares the baseline and candidate profiles and distinguishes numerical
-  validity, source reconciliation, empirical accuracy and remaining assumptions.
-- No acceptance criterion depends on obtaining more REMIND-team data or making
-  every asset appear empirically supported.
+Compare stock and service shares for each group with the earlier run. Report
+how well the estimates match available observations and where they rely on
+proxies or equal-use assumptions. For the groups that changed, compare filtered,
+encrypted, and cached results and test positive and negative demand.
 
 ## Evidence and implementation references
 

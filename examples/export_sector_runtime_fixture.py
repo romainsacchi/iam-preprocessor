@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 def main():
-    """Read the stock package and export the fixture used by the sector runtime."""
+    """Export the earlier premise test fixture from the archived scenario CSV."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--premise-checkout", type=Path, required=True)
     parser.add_argument("--directory", type=Path, required=True)
@@ -27,7 +27,7 @@ def main():
         if asset not in fixture.ASSETS:
             fixture.ASSETS[asset] = ("USA", "unit", "kilowatt hour", 1e-8, 1000.0)
     if set(fixture.ASSETS) != set(audit["primary_assets"]):
-        raise ValueError("Fixture registry does not match the reviewed asset catalogue")
+        raise ValueError("The example's assets do not match the assets in the saved results.")
     for varying in (False, True):
         result = fixture.export(
             directory / "runtime/plain",

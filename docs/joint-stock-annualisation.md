@@ -31,9 +31,8 @@ K[t] = surviving_initial_stock[t] + sum_c(response[t,c] * additions[c])
 
 `response[t,c]` is the share of additions made in year `c` that survive until
 year `t`, including any fixed share retired early. Additions and stocks must
-be nonnegative. The older CSV format fills gaps in the original rows along a
-straight line and writes the fitted values in the `Stock Vintage|v1|` rows.
-Changing assumptions can change estimated stock between reporting years.
+be nonnegative. The Parquet table contains the fitted values. Changing
+assumptions can change estimated stock between reporting years.
 
 ## Smoothing and incompatible observations
 

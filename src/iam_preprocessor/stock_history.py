@@ -1,4 +1,4 @@
-"""Auditable panels of observed surviving assets; no inferred disposal dates."""
+"""Compare observations of the same assets across years."""
 
 from collections import defaultdict
 from io import BytesIO

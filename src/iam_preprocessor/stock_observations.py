@@ -1,7 +1,8 @@
-"""Auditable initial-stock curation for the bounded REMIND sector example.
+"""Read and group opening stock observations for the REMIND sector example.
 
-Quantities are observed surviving stock, never historical inflows. Unknown dates
-are retained in the audit and assigned proportionally only in the model input.
+The source quantities describe assets still in use. The summary keeps the
+quantity with unknown build dates. The model input spreads that quantity across
+the known dates in proportion to their stock.
 """
 
 from __future__ import annotations
