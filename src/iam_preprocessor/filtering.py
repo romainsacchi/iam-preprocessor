@@ -4,34 +4,11 @@ from __future__ import annotations
 
 import pandas as pd
 
+from .variable_maps import variable_map
+
 DEFAULT_PREFIXES = (
-    "Stock Vintage|v1|",
-    "Distance",
-    "Energy Service",
-    "ES",
-    "FE",
-    "SE",
-    "PE",
-    "Final Energy",
-    "Production",
-    "Efficiency",
-    "Emi|CO2",
-    "Emissions|CO2",
-    "Emissions|Kyoto Gases",
-    "Emission Factor|CO2",
-    "Carbon Capture",
-    "Land Use",
-    "Temperature",
-    "AR6",
-    "Secondary Energy",
-    "Primary Energy",
-    "Population",
-    "Tech",
-    "GDP",
-    "MAGICC7 AR6|Raw Surface Temperature (GMST)|50.0th Percentile",
-    "Carbon Management|Carbon Capture|Industrial Processes|Industry|+|Cement",
-    "New",
-    "Sales",
+    variable_map("vintage_output_variables.yaml")["prefix"],
+    *variable_map("variable_filters.yaml")["prefixes"],
 )
 
 

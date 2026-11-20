@@ -162,9 +162,10 @@ def test_stock_driven_solver_applies_flodym_early_retirement(policy, expected, m
     assert result.inflow[2] == pytest.approx(1)
 
 
-def test_remind_maximum_lifetime_survival_and_cutoff():
+@pytest.mark.parametrize("distribution", ["quartic", "remind"])
+def test_remind_maximum_lifetime_survival_and_cutoff(distribution):
     years = list(range(2020, 2026))
-    sf = survival_matrix(years, np.full(len(years), 5), distribution="remind")
+    sf = survival_matrix(years, np.full(len(years), 5), distribution=distribution)
     expected = np.maximum(0, 1 - (np.arange(6) / 5) ** 4)
     np.testing.assert_allclose(sf[:, 0], expected)
     assert sf[5, 0] == 0

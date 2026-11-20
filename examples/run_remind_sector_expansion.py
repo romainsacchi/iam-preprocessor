@@ -19,6 +19,11 @@ from validate_stock_output import validate
 
 import iam_preprocessor.stock_observations as observation_module
 from iam_preprocessor.io import read_frame, sha256_file
+from iam_preprocessor.research.remind.registry import (
+    load_evidence_registry,
+    load_remind_asset_registry,
+    remind_stock_variable_names,
+)
 from iam_preprocessor.stock_observations import (
     curate_liquid_cars,
     curate_power,
@@ -28,15 +33,7 @@ from iam_preprocessor.stock_observations import (
 from iam_preprocessor.stock_vintages import prepare_stock_vintages
 from iam_preprocessor.vintage_inputs import read_iam_series
 
-# Exact leaf selectors: aggregate parents and children must never be added together.
-POWER = {
-    "wind-onshore": ("Wind|+|Onshore", "Wind|+|Onshore", "Wind|Onshore", 25),
-    "wind-offshore": ("Wind|+|Offshore", "Wind|+|Offshore", "Wind|Offshore", 25),
-    "nuclear": ("+|Nuclear", "+|Nuclear", "Nuclear", 50),
-    "gas-turbine": ("Gas|GT", "Gas|++|Gas Turbine", "Gas|Gas Turbine", 30),
-    "geothermal": ("+|Geothermal", "+|Geothermal", "Geothermal", 30),
-    "csp": ("Solar|+|CSP", "Solar|+|CSP", "Solar|CSP", 30),
-}
+POWER = ("wind-onshore", "wind-offshore", "nuclear", "gas-turbine", "geothermal", "csp")
 PRIMARY = ("passenger-bev", "heavy-trucks", "pv", "ccgt", "passenger-liquids", *POWER)
 NEW_CASES = (
     "primary",
@@ -71,6 +68,7 @@ DEFERRED = {
 
 
 def make_expanded_config(archive, output, end_year=2050):
+    """Build the settings for expanding reconstruction to more REMIND sectors."""
     source, config_path = make_config(archive, output, end_year)
     config = yaml.safe_load(config_path.read_text())
     frame = read_frame(source)
@@ -92,32 +90,30 @@ def make_expanded_config(archive, output, end_year=2050):
         "assets": {},
         "deferred": DEFERRED,
     }
+    pilot_assets = load_evidence_registry()
+    native_assets = load_remind_asset_registry()[0]["assets"]
     bases = {}
     for asset, record in observations.items():
         power = asset in POWER
         template = "pv" if power else "passenger-bev"
         base = deepcopy(next(a for a in config["assets"] if a["id"] == template))
         base["id"] = asset
+        reviewed = pilot_assets[asset]
+        for role in ("stock", "inflow", "service"):
+            base[role] = reviewed[role].copy()
         if power:
-            capacity, service, lifetime, mean = POWER[asset]
-            for role, variable, unit in (
-                ("stock", "Cap|Electricity|" + capacity, "GW"),
-                ("inflow", "New Cap|Electricity|" + capacity, "GW/yr"),
-                ("service", "SE|Electricity|" + service, "EJ/yr"),
-            ):
-                base[role] = {"variable": variable, "unit": unit}
+            mean = reviewed["maximum_life"]
+            _, _, lifetime_variable = remind_stock_variable_names(native_assets[asset])
             base["lifetime"].update(
                 initial_maximum=mean,
-                source={"variable": f"Tech|Electricity|{lifetime}|Lifetime", "unit": "years"},
+                source={"variable": lifetime_variable, "unit": "years"},
             )
             initial_text = "EIA-860 operating US generator nameplate capacity by operating year. "
             initial_text += "50 states and DC; CHP and non-operating records excluded. "
             service_text = "Equal annual service per GW; no observed age-specific generation."
             observation_source = "eia8602022.zip"
         else:
-            mean = 20
-            for role in ("stock", "inflow", "service"):
-                base[role]["variable"] = base[role]["variable"].removesuffix("BEV") + "Liquids"
+            mean = reviewed["service_life"]
             initial_text = "UK petrol plus diesel first-use-year composition is an EUR proxy. "
             initial_text += (
                 "Conventional ICE proxy; IAM Liquids fuel/hybrid boundary is not resolved. "
@@ -204,6 +200,7 @@ def make_expanded_config(archive, output, end_year=2050):
 
 
 def main():
+    """Run the sector expansion and write results and coverage checks."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)

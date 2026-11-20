@@ -3,8 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from iam_preprocessor.message import prepare_message
-from iam_preprocessor.remind import split_cement_ccs
+from iam_preprocessor.adapters.message.preparation import prepare_message
+from iam_preprocessor.adapters.remind.preparation import split_cement_ccs
 
 
 def test_message_region_cleanup(tmp_path):

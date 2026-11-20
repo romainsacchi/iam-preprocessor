@@ -5,10 +5,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-from .crypto import encrypt_file
-from .filtering import filter_variables
-from .io import discover_inputs, read_frame, sha256_file, write_csv_atomic
-from .report import ProcessingReport
+from ...crypto import encrypt_file
+from ...filtering import filter_variables
+from ...io import discover_inputs, read_frame, sha256_file, write_csv_atomic
+from ...report import ProcessingReport
+from ...variable_maps import variable_map
+
+ADAPTER = variable_map("settings.yaml", package=__package__)
 
 
 def prepare_message(
@@ -32,12 +35,20 @@ def prepare_message(
             input_sha256=sha256_file(source),
             input_rows=len(frame),
         )
-        frame["Region"] = frame["Region"].astype(str).str.replace("R12_", "", regex=False)
+        frame["Region"] = (
+            frame["Region"]
+            .astype(str)
+            .str.replace(ADAPTER["region_label_fragment"], "", regex=False)
+        )
         before = len(frame)
-        frame = frame.loc[~frame["Region"].eq("GLB")].copy()
+        frame = frame.loc[~frame["Region"].isin(ADAPTER["exclude_regions"])].copy()
         removed = before - len(frame)
         if removed:
-            report.warnings.append(f"Removed {removed} GLB rows.")
+            report.warnings.append(
+                f"Removed {removed} rows for excluded regions: "
+                + ", ".join(ADAPTER["exclude_regions"])
+                + "."
+            )
 
         if filter_output:
             frame = filter_variables(frame)

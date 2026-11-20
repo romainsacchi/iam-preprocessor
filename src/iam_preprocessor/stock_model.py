@@ -12,11 +12,16 @@ from math import gamma
 import numpy as np
 
 from .exceptions import DataValidationError
+from .lifetime import canonical_distribution, lifetime_parameter
 
 
 @dataclass
 class CohortResult:
-    """End-year stocks; flows at index zero are undefined (initial condition)."""
+    """Store end-of-year stock and flows with rows for years and columns for cohorts.
+
+    Flow totals have one value per year. The first entry is undefined because
+    the first reported year supplies the opening stock.
+    """
 
     years: np.ndarray
     cohorts: np.ndarray
@@ -84,8 +89,7 @@ def survival_matrix(years, lifetimes, *, distribution, shape=None, conditional_y
     for rare old survivors. Fixed lifetimes remain unchanged: observations
     beyond that age are invalid.
     Weibull means are converted to scale; shape is an independent assumption.
-    REMIND energy-conversion lifetimes are maximum lifetimes ``tau``, with
-    survival ``max(0, 1 - (age / tau) ** 4)`` and mean ``4 * tau / 5``.
+    Quartic survival is ``max(0, 1 - (age / maximum) ** 4)``.
     """
     from .flodym_stock import lifetime_survival
 
@@ -99,26 +103,28 @@ def survival_matrix(years, lifetimes, *, distribution, shape=None, conditional_y
             "Lifetime parameters must be finite, positive and cohort-specific."
         )
     dates = np.asarray(years, dtype=int)
+    distribution = canonical_distribution(distribution)
+    parameter = lifetime_parameter(distribution)
     if distribution == "weibull" and (shape is None or not np.isfinite(shape) or shape <= 0):
         raise DataValidationError("Weibull shape must be finite and positive.")
-    if distribution not in {"fixed", "weibull", "remind"}:
-        raise DataValidationError("Lifetime distribution must be fixed, weibull or remind.")
-    if distribution == "remind" and shape is not None:
-        raise DataValidationError("REMIND maximum lifetimes do not use a shape parameter.")
+    if parameter == "maximum" and shape is not None:
+        raise DataValidationError("Quartic maximum lifetimes do not use a shape parameter.")
     if distribution == "fixed" and shape is not None:
         raise DataValidationError("Fixed lifetimes do not use a shape parameter.")
+    # FLODyM supplies absolute survival from the date of installation.
     sf = lifetime_survival(dates, lifetimes, distribution, shape)
     if conditional_year is not None:
         if conditional_year not in years:
             raise DataValidationError("Conditional survival year must be in the model years.")
         if distribution == "weibull":
+            # Work with the difference in cumulative hazards for very old survivors.
             initial = dates <= conditional_year
             ages = np.maximum(0, dates[:, None] - dates[None, initial])
             reference_ages = conditional_year - dates[initial]
             scale = lifetimes[initial] / gamma(1 + 1 / shape)
             hazard = np.maximum(0, (ages / scale) ** shape - (reference_ages / scale) ** shape)
             sf[:, initial] = np.exp(-hazard) * (dates[:, None] >= dates[None, initial])
-        elif distribution == "remind":
+        elif parameter == "maximum":
             initial = dates <= conditional_year
             raw = sf[:, initial]
             reference = raw[list(years).index(conditional_year)]
@@ -193,6 +199,7 @@ def reconstruct(
         additional_by_cohort = np.zeros_like(stock)
         additional_by_cohort[0] = np.nan
         if removal_share is not None or (mode == "stock" and exit_policy != "error"):
+            # Use lifetime survival alone to separate normal and early retirements.
             previous = survival[ref:-1]
             ratio = np.divide(
                 survival[ref + 1 :], previous, out=np.zeros_like(previous), where=previous > 0
@@ -251,6 +258,7 @@ def reconstruct_stock_path(years, ref, initial, survival, targets, exit_policy):
         natural[j] = natural_by_cohort[j].sum()
         additional[j] = 0.0
         additional_by_cohort[j] = 0.0
+        # A shortfall calls for new stock. A surplus calls for early retirements.
         change = targets[j] - survivors.sum()
         if change < 0:
             allocated = _allocate_additional_exit(
@@ -341,11 +349,13 @@ def reconstruct_stock_flow(
         raise DataValidationError("Observed exit matrix has inconsistent dimensions.")
     for i in range(ref + 1, n):
         row = i - ref
+        # Convert survival since installation to survival over this one-year step.
         ratio = np.divide(survival[i], survival[i - 1], out=np.zeros(n), where=survival[i - 1] > 0)
         survivors = stock[row - 1] * ratio
         natural_by_cohort[row] = stock[row - 1] - survivors
         natural[row] = natural_by_cohort[row].sum()
         inflow[row] = inflow_targets[row]
+        # The IAM gives both additions and closing stock, leaving retirements as the difference.
         available = survivors.sum() + inflow[row]
         required_exit = available - stock_targets[row]
         tolerance = 1e-10 * max(1.0, available, stock_targets[row])

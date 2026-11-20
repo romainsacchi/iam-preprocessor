@@ -53,7 +53,7 @@ iam-preprocessor = "iam_preprocessor.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-iam_preprocessor = ["data/*.yaml"]
+"*" = ["data/*.yaml"]
 
 [tool.pytest.ini_options]
 addopts = "--cov=iam_preprocessor --cov-report=term-missing"

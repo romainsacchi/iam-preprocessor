@@ -4,10 +4,12 @@ from math import gamma
 
 import numpy as np
 
+from .lifetime import canonical_distribution
 from .stock_model import reconstruct, survival_matrix
 
 
 def check_experiment_inputs(experiment, fields):
+    """Check which inputs the experiment may use before comparing against held-out data."""
     allowed = {
         "A": {"initial_cohorts", "lifetime_prior"},
         "B": {"initial_cohorts", "lifetime_prior", "independent_additions"},
@@ -22,9 +24,11 @@ def check_experiment_inputs(experiment, fields):
 def opening_survival(
     initial, reference, year, lifetime, shape=3, *, distribution="weibull", method="prior"
 ):
+    """Project how much of each opening cohort remains in a later year."""
+    distribution = canonical_distribution(distribution)
     if (
         method not in {"prior", "no-retirement"}
-        or distribution not in {"fixed", "weibull", "remind"}
+        or distribution not in {"fixed", "weibull", "quartic"}
         or lifetime <= 0
         or (distribution == "weibull" and shape <= 0)
     ):
@@ -34,6 +38,7 @@ def opening_survival(
     scale = lifetime / gamma(1 + 1 / shape) if distribution == "weibull" else None
 
     def ratio(cohort):
+        """Find the fraction of an opening cohort expected to survive to the closing year."""
         if method == "no-retirement":
             return 1.0
         opening_age, closing_age = reference - cohort, year - cohort
@@ -59,6 +64,7 @@ def conditional_history(
     additions=None,
 ):
     """Only aggregate totals or independently supplied additions enter prediction."""
+    distribution = canonical_distribution(distribution)
     if method not in {"prior", "no-retirement", "equilibrium"}:
         raise ValueError("Unknown historical method")
     if (
@@ -70,7 +76,7 @@ def conditional_history(
     if (
         lifetime <= 0
         or (distribution == "weibull" and shape <= 0)
-        or distribution not in {"fixed", "weibull", "remind"}
+        or distribution not in {"fixed", "weibull", "quartic"}
         or any(not np.isfinite(v) or v < 0 for v in totals.values())
     ):
         raise ValueError("Invalid driver or prior")
@@ -142,6 +148,7 @@ def score_cohorts(predicted, observed, year, *, total_is_input, tail_age=40):
     age = year - cohorts
 
     def quantile(w, prob):
+        """Find the value at the requested cumulative share of the weighted data."""
         return float(age[::-1][np.searchsorted(np.cumsum(w[::-1]), prob)])
 
     bins = age // 5

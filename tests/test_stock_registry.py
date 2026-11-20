@@ -3,7 +3,7 @@ from copy import deepcopy
 import pytest
 
 from iam_preprocessor.exceptions import DataValidationError
-from iam_preprocessor.stock_registry import (
+from iam_preprocessor.research.remind.registry import (
     load_remind_asset_registry,
     load_remind_region_crosswalk,
     registry_provenance,
@@ -39,7 +39,7 @@ def test_eu21_country_crosswalk_keeps_uki_aggregate_explicit():
 
 
 def test_crosswalk_validator_rejects_overlapping_country(monkeypatch):
-    import iam_preprocessor.stock_registry as module
+    from iam_preprocessor.research.remind import registry as module
 
     original = module._load
 

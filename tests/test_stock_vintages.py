@@ -1,5 +1,6 @@
 import json
 from copy import deepcopy
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -99,6 +100,65 @@ def test_initial_shares_service_shares_and_original_anchor_preservation(inputs):
     for family in ("Stock Share", "Service Share"):
         subset = values.loc[values.index.str.startswith(PREFIX + f"cars|{family}|Vintage|")]
         np.testing.assert_allclose(subset[[str(y) for y in range(2020, 2031)]].sum(), 1)
+
+
+@pytest.mark.parametrize("model", ["IMAGE 3.4", "MESSAGEix-GLOBIOM 2.0", "Other IAM"])
+def test_model_neutral_cli_uses_yaml_and_reconstructs(inputs, tmp_path, model):
+    frame, config, mapping, source = inputs
+    frame["Model"] = model
+    frame["Scenario"] = "model-specific run"
+    names = dict(zip(frame.Variable, ["installed", "new", "lifetime", "use"], strict=True))
+    frame["Variable"] = frame["Variable"].map(names)
+    frame.to_csv(source, sep=";", index=False)
+    asset = config["assets"][0]
+    if model == "IMAGE 3.4":
+        lifetime = asset["lifetime"]
+        lifetime["distribution"] = "quartic"
+        lifetime["initial_maximum"] = lifetime.pop("initial_mean")
+        lifetime.pop("shape")
+    for selector in (
+        asset["stock"],
+        asset["inflow"],
+        asset["lifetime"]["source"],
+        asset["service"],
+    ):
+        selector["variable"] = names[selector["variable"]]
+    mapping.write_text(yaml.safe_dump({"assets": [asset]}))
+    destination = tmp_path / "configured" / "stocks.yaml"
+    runner = CliRunner()
+    result = runner.invoke(
+        app, ["stock-config", str(source), "--mapping", str(mapping), "-o", str(destination)]
+    )
+    assert result.exit_code == 0, result.output
+    bound = load_stock_config(destination)
+    assert (bound["model"], bound["scenario"]) == (model, "model-specific run")
+    assert Path(bound["assets"][0]["initial"]["file"]) == tmp_path / "cohorts.csv"
+    inventory_path = tmp_path / "stock-inventory.csv"
+    audit = runner.invoke(
+        app,
+        ["stock-inventory", str(source), "--config", str(destination), "-o", str(inventory_path)],
+    )
+    assert audit.exit_code == 0, audit.output
+    inventory = pd.read_csv(inventory_path, sep=";")
+    assert set(inventory["variable"]) == {"installed", "new", "lifetime", "use"}
+    assert set(inventory["status"]) == {"available"}
+    output = tmp_path / "output"
+    result = runner.invoke(
+        app,
+        [
+            "stock-vintages",
+            str(source),
+            "--config",
+            str(destination),
+            "-o",
+            str(output),
+            "--package-only",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    vintages = pd.read_parquet(next(output.glob("*/vintages.parquet")))
+    assert set(vintages["model"]) == {model}
+    assert set(vintages["scenario"]) == {"model-specific run"}
 
 
 def test_equilibrium_initialization_allows_zero_opening_stock(inputs):

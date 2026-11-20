@@ -1,0 +1,19 @@
+# These labels form the version 1 exchange contract with downstream consumers.
+namespace: "Stock Vintage|"
+prefix: "Stock Vintage|v1|"
+cohort:
+  stock: "Stock|Vintage|{year}"
+  stock_share: "Stock Share|Vintage|{year}"
+  service: "Service|Vintage|{year}"
+  service_share: "Service Share|Vintage|{year}"
+total:
+  coverage: Coverage
+  stock: Stock
+  inflow: Inflow
+  natural_exit: Natural Exit
+  additional_exit: Additional Exit
+  balance: Balance Residual
+  inflow_residual: Inflow Residual
+  implied_exit: Implied Exit From IAM Totals
+  stock_residual: Stock Residual
+  service: Service

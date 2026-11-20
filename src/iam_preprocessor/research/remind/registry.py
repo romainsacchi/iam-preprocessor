@@ -1,4 +1,4 @@
-"""Validated, versioned REMIND asset and country-region registries."""
+"""Versioned asset and regional crosswalks for the REMIND research runs."""
 
 from __future__ import annotations
 
@@ -7,10 +7,12 @@ from pathlib import Path
 
 import yaml
 
-from .exceptions import DataValidationError
-from .io import sha256_file
+from ...exceptions import DataValidationError
+from ...io import sha256_file
+from ...variable_maps import variable_map
 
 DATA = Path(__file__).parent / "data"
+REMIND_STOCK_NAMES = variable_map("stock_variables.yaml", package=__package__)
 ASSET_SECTORS = {
     "carbon_management",
     "gases",
@@ -24,6 +26,7 @@ ASSET_SECTORS = {
 
 
 def _load(name):
+    """Read a versioned REMIND research YAML file and return its path."""
     path = DATA / name
     value = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict) or value.get("schema_version") != 1:
@@ -31,7 +34,31 @@ def _load(name):
     return value, path
 
 
+def is_remind_model(model):
+    """Match the model family while preserving the scenario table's original label."""
+    return bool(re.match(r"^remind(?=$|[0-9\s._-])", model.strip(), re.IGNORECASE))
+
+
+def remind_stock_variable_names(asset):
+    """Resolve a REMIND registry entry to stock, addition and lifetime row names."""
+    names = REMIND_STOCK_NAMES
+    if asset["sector"] == "transport":
+        return (
+            names["transport_prefix"] + asset["variable_suffix"],
+            names["transport_additions_prefix"] + asset["variable_suffix"],
+            None,
+        )
+    if "stock_variable" in asset:
+        return asset["stock_variable"], asset["inflow_variable"], asset["lifetime_variable"]
+    return (
+        names["power_stock"].format(suffix=asset["stock_suffix"]),
+        names["power_additions"].format(suffix=asset["inflow_suffix"]),
+        names["power_lifetime"].format(suffix=asset["lifetime_suffix"]),
+    )
+
+
 def load_remind_asset_registry():
+    """Read and check the REMIND asset mappings used in the research examples."""
     registry, path = _load("remind_stock_mappings.yaml")
     assets = registry.get("assets")
     if not isinstance(assets, dict) or not assets:
@@ -82,12 +109,14 @@ def load_remind_asset_registry():
     if not isinstance(excluded, dict):
         raise DataValidationError("REMIND capacity exclusions must be a mapping.")
     mapped_capacity = {
-        asset.get("stock_variable", f"Cap|Electricity|{asset.get('stock_suffix')}")
+        remind_stock_variable_names(asset)[0]
         for asset in assets.values()
         if asset["sector"] != "transport"
     }
     for variable, metadata in excluded.items():
-        if variable in mapped_capacity or not variable.startswith("Cap|"):
+        if variable in mapped_capacity or not variable.startswith(
+            REMIND_STOCK_NAMES["capacity_prefix"]
+        ):
             raise DataValidationError(f"Invalid REMIND capacity exclusion: {variable}")
         if not isinstance(metadata, dict) or metadata.get("status") not in {
             "ambiguous_lifetime",
@@ -101,6 +130,7 @@ def load_remind_asset_registry():
 
 
 def load_remind_region_crosswalk():
+    """Read and check the REMIND region names used to match outside evidence."""
     crosswalk, path = _load("remind_regions.yaml")
     regions = crosswalk.get("regions")
     if not isinstance(regions, dict) or not regions:
@@ -122,6 +152,7 @@ def load_remind_region_crosswalk():
 
 
 def registry_provenance():
+    """Return the file details needed to identify the REMIND research mappings."""
     assets, asset_path = load_remind_asset_registry()
     regions, region_path = load_remind_region_crosswalk()
     return {
@@ -135,3 +166,8 @@ def registry_provenance():
             "sha256": sha256_file(region_path),
         },
     }
+
+
+def load_evidence_registry():
+    """Load the asset crosswalk used by the historical evidence campaign."""
+    return variable_map("remind_stock_assets.yaml", package=__package__)["assets"]

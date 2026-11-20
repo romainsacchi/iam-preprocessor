@@ -30,18 +30,20 @@ except ImportError as exc:
     ) from exc
 
 
-class RemindLifetime(LifetimeModel):
-    """REMIND capacity survival with a maximum lifetime for each cohort."""
+class QuarticLifetime(LifetimeModel):
+    """Survival falls as the fourth power of age and reaches zero at the maximum."""
 
     maximum: np.ndarray
     _prm_names: ClassVar[list[str]] = ["maximum"]
     _prm_names_to_scale: ClassVar[list[str]] = ["maximum"]
 
     def _survival_by_cohort(self, ages, cohort):
+        """Evaluate quartic survival at the given ages for one cohort."""
         return np.maximum(0, 1 - (ages / self._scaled_prms["maximum"][cohort]) ** 4)
 
 
 def _time_dimensions(years):
+    """Create the annual time axis used by FLODyM."""
     return DimensionSet(dim_list=[Dimension(name="time", letter="t", items=years.tolist())])
 
 
@@ -63,8 +65,10 @@ def lifetime_survival(years, lifetimes, distribution, shape):
             weibull_shape=shape,
             inflow_at="end",
         )
+    elif distribution == "quartic":
+        law = QuarticLifetime(dims=dims, maximum=parameters, inflow_at="end")
     else:
-        law = RemindLifetime(dims=dims, maximum=parameters, inflow_at="end")
+        raise DataValidationError(f"Unknown lifetime distribution: {distribution}.")
     return law.cumulative_survival[np.ix_(positions, positions)]
 
 
@@ -75,6 +79,7 @@ def solve_from_survival(years, ref, opening, survival, targets, mode, exit_polic
     Unresolved negative additions return control to the caller.
     """
     count = len(years)
+    # Pad short runs to give FLODyM enough time points to set its period bounds.
     table = np.eye(max(3, count))
     table[:count, :count] = survival
     calendar = np.arange(years[0], years[0] + len(table))
@@ -94,6 +99,7 @@ def solve_from_survival(years, ref, opening, survival, targets, mode, exit_polic
     driving_values = np.zeros(len(table))
     driving_values[future] = targets[1:]
     driving_array = StockArray(dims=dims, values=driving_values)
+    # In stock-driven mode FLODyM solves for additions. In inflow-driven mode it solves for stock.
     if mode == "stock":
         behavior = {
             "proportional": "remove_flat",
@@ -111,6 +117,7 @@ def solve_from_survival(years, ref, opening, survival, targets, mode, exit_polic
         model = InflowDrivenDSM(
             dims=dims, cohort_dim=cohort, lifetime_model=law, inflow=driving_array
         )
+    # Pass in the installed cohorts at the reference year before advancing the model.
     initial = FlodymArray(
         dims=DimensionSet(dim_list=[cohort]), values=np.pad(opening, (0, len(table) - count))
     )

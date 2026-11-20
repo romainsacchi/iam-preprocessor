@@ -21,10 +21,10 @@ from validate_stock_output import validate
 
 from iam_preprocessor.exceptions import DataValidationError
 from iam_preprocessor.io import read_frame, sha256_file
+from iam_preprocessor.research.remind.registry import load_evidence_registry
 from iam_preprocessor.stock_config import load_stock_config
 from iam_preprocessor.stock_history import (
     read_snapshot,
-    registry,
     select_snapshot,
     summarize,
     transition_ledger,
@@ -32,20 +32,24 @@ from iam_preprocessor.stock_history import (
 from iam_preprocessor.stock_observations import curate_vehicle_history
 from iam_preprocessor.stock_service import audit_service, read_generation
 from iam_preprocessor.stock_validation import conditional_history, opening_survival, score_cohorts
-from iam_preprocessor.stock_vintages import prepare_stock_vintages
+from iam_preprocessor.stock_vintages import PREFIX, prepare_stock_vintages
+from iam_preprocessor.variable_maps import vintage_suffix
 from iam_preprocessor.vintage_inputs import read_iam_series
 from iam_preprocessor.vintage_reconstruction import reconstruct_asset
 
 
 def save(path, data):
+    """Write an experiment result as JSON."""
     path.write_text(json.dumps(data, indent=2, allow_nan=False) + "\n")
 
 
 def csv(path, rows):
+    """Write a table of experiment results to CSV."""
     pd.DataFrame(rows).to_csv(path, index=False)
 
 
 def verify_manifest(path):
+    """Verify the archived evidence files before running the experiments."""
     manifest = json.loads(path.read_text())
     files = {}
     for role, item in manifest["files"].items():
@@ -69,6 +73,7 @@ def naei_profiles(pdf, output):
     numeric = r"([\d.]+|N/A)"
 
     def rows(section, columns):
+        """Extract month rows from one section of the published table."""
         result = []
         for line in section.splitlines():
             match = re.search(
@@ -139,6 +144,7 @@ def naei_profiles(pdf, output):
 
 
 def historical_tests(history, panels, mappings, output, campaign):
+    """Compare modelled cohorts with later observations held out of the fit."""
     metrics, predictions, inputs, transitions, exclusions = [], [], [], [], []
     for asset, m in mappings.items():
         power = m["kind"] == "power"
@@ -313,7 +319,8 @@ def historical_tests(history, panels, mappings, output, campaign):
 
 
 def audit_sources(files, output, campaign):
-    mappings = registry()
+    """Check and summarize how the input sources can be used in validation."""
+    mappings = load_evidence_registry()
     frame = read_frame(files["scenario"])
     panels = {y: read_snapshot(files[f"eia860{y}.zip"], y) for y in (2020, 2021, 2022)}
     for y, panel in panels.items():
@@ -425,6 +432,7 @@ def audit_sources(files, output, campaign):
 
 
 def configure(files, baseline, output, decisions, curves):
+    """Build stock configurations from the checked evidence and the reference scenario."""
     config = load_stock_config(baseline / "remind-npi2025-stock-config.yaml")
     # Copy every original input, keeping all 93 existing sensitivity cases reproducible.
     copied = {}
@@ -437,7 +445,8 @@ def configure(files, baseline, output, decisions, curves):
             dest.write_bytes(old.read_bytes())
             copied[dest.name] = old
             asset["initial"]["file"] = str(dest)
-    primary = {a["id"]: a for a in config["assets"] if a["id"] in registry()}
+    evidence_assets = load_evidence_registry()
+    primary = {a["id"]: a for a in config["assets"] if a["id"] in evidence_assets}
     frame = read_frame(files["scenario"])
     candidates = []
     for d in decisions:
@@ -535,12 +544,13 @@ def configure(files, baseline, output, decisions, curves):
     save(output / "service-decisions.json", decisions)
     save(
         output / "sector-observation-audit.json",
-        dict(primary_assets=list(registry()), evidence_campaign=True),
+        dict(primary_assets=list(evidence_assets), evidence_campaign=True),
     )
     return dest
 
 
 def compare_baseline(files, report, output):
+    """Compare the reconstructed results with those of the baseline run."""
     old = read_frame(files["baseline_output"])
     new = read_frame(report.output_path)
     keys = ["Model", "Scenario", "Region", "Variable", "Unit"]
@@ -554,8 +564,8 @@ def compare_baseline(files, report, output):
     variables = a.index.get_level_values("Variable")
     allowed = np.zeros(len(a), dtype=bool)
     for asset in promotions:
-        for family in ("Service", "Service Share"):
-            allowed |= variables.str.startswith(f"Stock Vintage|v1|{asset}|{family}|Vintage|")
+        for metric in ("service", "service_share"):
+            allowed |= variables.str.startswith(PREFIX + asset + "|" + vintage_suffix(metric, ""))
     ids = a.index[~allowed]
     np.testing.assert_allclose(
         a.loc[ids, columns], b.loc[ids, columns], rtol=1e-12, atol=1e-12, equal_nan=True
@@ -576,6 +586,7 @@ def compare_baseline(files, report, output):
 
 
 def main():
+    """Run the REMIND evidence experiments and write the reports."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--baseline", type=Path, required=True)

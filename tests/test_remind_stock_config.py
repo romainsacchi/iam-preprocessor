@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from iam_preprocessor.exceptions import DataValidationError
-from iam_preprocessor.remind_stock_config import build_remind_stock_config
+from iam_preprocessor.research.remind.stock_config import build_remind_stock_config
 from iam_preprocessor.stock_config import load_stock_config
 
 
@@ -141,6 +141,11 @@ def test_builds_individual_region_power_and_transport_assets(tmp_path):
 
     path.write_text(yaml.safe_dump(config))
     assert len(load_stock_config(path)["assets"]) == 4
+
+    # A legacy file's source checksums are checked independently of its model label.
+    config["model"] = "Other IAM"
+    path.write_text(yaml.safe_dump(config))
+    assert load_stock_config(path)["registries"] == config["registries"]
 
 
 def test_defaults_exclude_known_aggregate_regions():

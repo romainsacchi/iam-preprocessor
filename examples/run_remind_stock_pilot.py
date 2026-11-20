@@ -24,6 +24,7 @@ from iam_preprocessor.exceptions import DataValidationError
 from iam_preprocessor.io import read_frame, sha256_file
 from iam_preprocessor.stock_config import load_stock_config
 from iam_preprocessor.stock_vintages import PREFIX, prepare_stock_vintages
+from iam_preprocessor.variable_maps import vintage_suffix
 from iam_preprocessor.vintage_reconstruction import reconstruct_asset
 
 FILES = {
@@ -50,6 +51,7 @@ CASES = (
 
 
 def make_config(archive, output, end_year, annualisation="joint"):
+    """Build the REMIND pilot settings using the reviewed evidence archive."""
     if not 2030 <= end_year <= 2050:
         raise ValueError(
             "This reviewed REMIND example supports 2030–2050; later periods need review."
@@ -95,6 +97,7 @@ def make_config(archive, output, end_year, annualisation="joint"):
         variables = evidence["iam_source"]["variables"]
 
         def selector(key, variables=variables):
+            """Describe an IAM input by its exact variable name and unit."""
             return dict(zip(("variable", "unit"), variables[key], strict=True))
 
         life = LIFETIMES[asset]
@@ -231,6 +234,7 @@ def make_config(archive, output, end_year, annualisation="joint"):
 
 
 def plot_results(output, report):
+    """Plot the reconstructed cohort mix and changes in stock in the pilot run."""
     frame = read_frame(report.output_path).set_index(["Region", "Variable"])
     fig, axes = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
     ages = []
@@ -239,7 +243,9 @@ def plot_results(output, report):
         subset = frame.loc[region]
         for year in sorted({2022, 2030, report.assumptions["end_year"]}):
             rows = subset.loc[
-                subset.index.str.startswith(PREFIX + asset + "|Service Share|Vintage|")
+                subset.index.str.startswith(
+                    PREFIX + asset + "|" + vintage_suffix("service_share", "")
+                )
             ]
             cohorts = np.array([int(v.split("|")[-1]) for v in rows.index])
             ax.plot(cohorts, rows[str(year)], label=str(year))
@@ -252,7 +258,9 @@ def plot_results(output, report):
         for case in CASES:
             ident = asset if case == "primary" else f"{asset}-{case}"
             rows = subset.loc[
-                subset.index.str.startswith(PREFIX + ident + "|Service Share|Vintage|")
+                subset.index.str.startswith(
+                    PREFIX + ident + "|" + vintage_suffix("service_share", "")
+                )
             ]
             if rows.empty:
                 continue
@@ -322,6 +330,7 @@ def record_rejected_sensitivities(source, config_path, *, primary_ids=None):
 
 
 def main():
+    """Run the REMIND pilot and write results and diagnostics."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)

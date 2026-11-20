@@ -77,7 +77,7 @@ def annual_additions(series, years, timing):
 
 
 def read_initial_cohorts(initial, reference_year):
-    """Read opening cohorts or return the configured equilibrium-prior span."""
+    """Return the opening observations, if any, and the earliest build year."""
     if initial["kind"] in {"equilibrium", "warm_start"}:
         opening = initial.get("base_year", reference_year)
         return None, opening - initial["maximum_age"]
@@ -112,6 +112,7 @@ def annualize_source_table(frame, added_years):
     for year in added_years:
         if str(year) in frame.columns:
             continue
+        # Always interpolate between years supplied by the IAM.
         lo, hi = max(y for y in anchors if y < year), min(y for y in anchors if y > year)
         try:
             lower = pd.to_numeric(frame[str(lo)], errors="raise")

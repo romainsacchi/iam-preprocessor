@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from iam_preprocessor.config import SecConfig
+from iam_preprocessor.adapters.image.config import SecConfig
 
 
 @pytest.fixture

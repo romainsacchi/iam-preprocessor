@@ -3,11 +3,11 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from iam_preprocessor.exceptions import DataValidationError
-from iam_preprocessor.transport import (
+from iam_preprocessor.adapters.image.transport import (
     derive_bev_truck_variables,
     derive_transport_energy_services,
 )
+from iam_preprocessor.exceptions import DataValidationError
 
 
 def test_energy_to_service_conversion_and_units(sec_config):

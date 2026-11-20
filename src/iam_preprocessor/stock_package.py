@@ -1,4 +1,4 @@
-"""Versioned, sparse sidecar packages for reconstructed stock vintages."""
+"""Files that store the estimated stock by build year."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ METRICS = {
 
 
 def validate_vintage_table(table: pd.DataFrame) -> None:
-    """Enforce the v2 long-table metric and uniqueness contract."""
+    """Check the result types and ensure that each row appears once."""
     missing = set(COLUMNS) - set(table.columns)
     if missing:
         raise DataValidationError(f"Vintage table is missing columns: {sorted(missing)}")
@@ -48,6 +48,7 @@ def validate_vintage_table(table: pd.DataFrame) -> None:
         raise DataValidationError("Vintage values must be finite and nonnegative.")
     if table[["model", "scenario", "region", "asset", "metric", "unit"]].isna().any().any():
         raise DataValidationError("Vintage identity, metric and unit fields cannot be null.")
+    # The reporting year describes the whole fleet. The cohort year identifies when it was built.
     year = pd.to_numeric(table["year"], errors="coerce")
     cohort = pd.to_numeric(table["cohort_year"], errors="coerce")
     legacy = table["metric"].eq("legacy_unallocated")
@@ -65,6 +66,7 @@ def validate_vintage_table(table: pd.DataFrame) -> None:
     shares = table["metric"].isin({"stock_share", "service_share"})
     if (table.loc[shares, "unit"] != "1").any() or (values[shares.to_numpy()] > 1 + 1e-10).any():
         raise DataValidationError("Share metrics must use unit 1 and lie between zero and one.")
+    # Check that each fleet with positive stock has a complete set of stock shares.
     stock = table.loc[table["metric"].eq("stock")]
     share = table.loc[table["metric"].eq("stock_share")]
     stock_totals = stock.groupby(KEY[:5], dropna=False)["value"].sum()
@@ -146,6 +148,7 @@ def validation_contract(diagnostics: list[dict]) -> dict:
 
 
 def _json(path: Path, value: dict) -> None:
+    """Write a formatted JSON file with sorted keys."""
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 

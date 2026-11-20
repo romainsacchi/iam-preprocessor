@@ -21,6 +21,7 @@ from .io import read_frame, sha256_file, validate_frame, write_csv_atomic, year_
 from .report import ProcessingReport
 from .stock_config import load_stock_config
 from .stock_package import write_vintage_package
+from .variable_maps import variable_map, vintage_suffix
 from .vintage_inputs import (
     annual_additions,
     annualize_source_table,
@@ -30,7 +31,8 @@ from .vintage_inputs import (
 )
 from .vintage_reconstruction import reconstruct_asset
 
-PREFIX = "Stock Vintage|v1|"
+VINTAGE_OUTPUT = variable_map("vintage_output_variables.yaml")
+PREFIX = VINTAGE_OUTPUT["prefix"]
 
 # Compatibility names retained for existing notebooks and downstream imports.
 _series = read_iam_series
@@ -48,14 +50,15 @@ def _asset_result(frame, asset, reference_year, end_year):
 def enrich_stock_vintages(frame, config, *, return_v2=False, include_v1=True):
     """Return an enriched table and diagnostics using a validated stock configuration.
 
-    One model/scenario per file is required because premise discards those two
-    dimensions when loading. No native IAM-vintage fidelity is claimed.
+    The input contains one model and scenario. Set ``return_v2`` to also receive
+    the long table, with one value per asset, region, year, cohort and metric.
+    Set ``include_v1=False`` to return the source table without added IAM rows.
     """
     validate_frame(frame)
     identity = frame[["Model", "Scenario"]].drop_duplicates().values.tolist()
     if identity != [[config["model"], config["scenario"]]]:
         raise DataValidationError("Input must contain exactly the configured model and scenario.")
-    if frame["Variable"].str.startswith("Stock Vintage|").any():
+    if frame["Variable"].str.startswith(VINTAGE_OUTPUT["namespace"]).any():
         raise DataValidationError("Input already contains stock-vintage enrichment.")
     ref, end = config["reference_year"], config["end_year"]
     rows, diagnostics, v2_rows = [], [], []
@@ -64,171 +67,10 @@ def enrich_stock_vintages(frame, config, *, return_v2=False, include_v1=True):
             reconstruction = reconstruct_asset(frame, asset, ref, end)
         except DataValidationError as exc:
             raise DataValidationError(f"{asset['id']}/{asset['region']}: {exc}") from exc
-        result = reconstruction.cohorts
-        shares = reconstruction.stock_shares
-        service_shares = reconstruction.service_shares
-        targets = reconstruction.stock_targets
-        flows = reconstruction.reported_additions
-        implied = reconstruction.implied_exit
-        service_target = reconstruction.service_target
-        joint_diagnostics = reconstruction.annualisation
-        basis_by_cohort = reconstruction.evidence_basis
-        prefix = PREFIX + asset["id"] + "|"
-        stock_unit = asset["stock"]["unit"]
-
-        def add_v2(
-            year,
-            cohort,
-            metric,
-            value,
-            unit,
-            *,
-            region=asset["region"],
-            asset_id=asset["id"],
-            cohort_basis=None,
-        ):
-            if not np.isfinite(value) or value <= 0:
-                return
-            v2_rows.append(
-                {
-                    "model": config["model"],
-                    "scenario": config["scenario"],
-                    "region": region,
-                    "asset": asset_id,
-                    "year": int(year),
-                    "cohort_year": int(cohort),
-                    "metric": metric,
-                    "value": float(value),
-                    "unit": unit,
-                    "evidence_basis": cohort_basis if cohort_basis is not None else "iam_addition",
-                }
-            )
-
-        def add(suffix, unit, values, *, region=asset["region"], prefix=prefix, years=result.years):
-            if not include_v1:
-                return
-            rows.append(
-                {
-                    "Model": config["model"],
-                    "Scenario": config["scenario"],
-                    "Region": region,
-                    "Variable": prefix + suffix,
-                    "Unit": unit,
-                    **{str(y): float(v) for y, v in zip(years, values, strict=True)},
-                }
-            )
-
-        for j, cohort in enumerate(result.cohorts):
-            # Include every cohort, including zero/future cohorts, to avoid implicit missing=zero.
-            add(f"Stock|Vintage|{cohort}", stock_unit, result.stock[:, j])
-            add(f"Stock Share|Vintage|{cohort}", "1", shares[:, j])
-            add(f"Service Share|Vintage|{cohort}", "1", service_shares[:, j])
-            if service_target is not None:
-                add(
-                    f"Service|Vintage|{cohort}",
-                    asset["service"]["unit"],
-                    service_shares[:, j] * service_target,
-                )
-            for i, year in enumerate(result.years):
-                basis = basis_by_cohort[j]
-                add_v2(year, cohort, "stock", result.stock[i, j], stock_unit, cohort_basis=basis)
-                add_v2(year, cohort, "stock_share", shares[i, j], "1", cohort_basis=basis)
-                add_v2(
-                    year,
-                    cohort,
-                    "service_share",
-                    service_shares[i, j],
-                    "1",
-                    cohort_basis=basis,
-                )
-                if service_target is not None:
-                    add_v2(
-                        year,
-                        cohort,
-                        "service",
-                        service_shares[i, j] * service_target[i],
-                        asset["service"]["unit"],
-                        cohort_basis=basis,
-                    )
-                if i and result.natural_exit_by_cohort is not None:
-                    add_v2(
-                        year,
-                        cohort,
-                        "retirement_natural",
-                        result.natural_exit_by_cohort[i, j],
-                        stock_unit + "/yr",
-                        cohort_basis=basis,
-                    )
-                if i and result.additional_exit_by_cohort is not None:
-                    add_v2(
-                        year,
-                        cohort,
-                        "retirement_additional",
-                        result.additional_exit_by_cohort[i, j],
-                        stock_unit + "/yr",
-                        cohort_basis=basis,
-                    )
-        for i, year in enumerate(result.years[1:], start=1):
-            add_v2(year, year, "addition", result.inflow[i], stock_unit + "/yr")
-        totals = result.stock.sum(axis=1)
-        add("Coverage", "1", np.ones(len(result.years)))
-        add("Stock", stock_unit, totals)
-        for name, values in (
-            ("Inflow", result.inflow),
-            ("Natural Exit", result.natural_exit),
-            ("Additional Exit", result.additional_exit),
-            ("Balance Residual", result.balance),
-            ("Inflow Residual", result.inflow - flows),
-            ("Implied Exit From IAM Totals", implied),
-        ):
-            add(name, stock_unit + "/yr", values)
-        add("Stock Residual", stock_unit, totals - targets)
-        if service_target is not None:
-            add("Service", asset["service"]["unit"], service_target)
-        diagnostic = {
-            "asset": asset["id"],
-            "region": asset["region"],
-            "mode": asset["mode"],
-            "maximum_balance_residual": float(np.max(np.abs(result.balance[1:]))),
-            "maximum_absolute_stock_residual": float(np.max(np.abs(totals - targets))),
-            "maximum_absolute_inflow_residual": float(
-                np.max(np.abs(result.inflow[1:] - flows[1:]))
-            ),
-            "maximum_stock_target": float(np.max(targets)),
-            "opening_prior_share": float(
-                result.stock[0, basis_by_cohort == "prior"].sum() / result.stock[0].sum()
-                if result.stock[0].sum()
-                else 0
-            ),
-            "opening_evidence_share": float(
-                result.stock[0, basis_by_cohort == "observed"].sum() / result.stock[0].sum()
-                if result.stock[0].sum()
-                else 0
-            ),
-            "total_additional_exits": float(np.sum(result.additional_exit[1:])),
-            "negative_implied_exit_years": result.years[
-                np.isfinite(implied) & (implied < -1e-12)
-            ].tolist(),
-            "implied_exits_exceed_opening_stock_years": result.years[1:][
-                implied[1:] > targets[:-1] + 1e-12
-            ].tolist(),
-            "zero_stock_years": result.years[totals == 0].tolist(),
-            "zero_service_years": result.years[service_shares.sum(axis=1) == 0].tolist(),
-            "configuration": asset,
-        }
-        if asset["initial"]["kind"] == "observed_shares":
-            diagnostic["observation_sha256"] = sha256_file(asset["initial"]["file"])
-        if asset["service_weighting"]["kind"] == "age_profile":
-            diagnostic["age_profile_sha256"] = sha256_file(
-                asset["service_weighting"]["age_profile_file"]
-            )
-        if joint_diagnostics is not None:
-            diagnostic["annualisation"] = joint_diagnostics
-            diagnostic["stock_residual_basis"] = (
-                "deviation from linear interpolation; source-anchor residuals reported separately"
-            )
-        diagnostics.append(diagnostic)
+        _append_asset_rows(config, asset, reconstruction, rows, v2_rows, include_v1)
+        diagnostics.append(_asset_diagnostics(asset, reconstruction))
     if include_v1:
+        # Fill the extra year columns on the original rows before appending the new ones.
         annual = _annualize_originals(frame, range(ref, end + 1))
         enriched = pd.concat([annual, pd.DataFrame(rows)], ignore_index=True)
         enriched = enriched[
@@ -241,6 +83,166 @@ def enrich_stock_vintages(frame, config, *, return_v2=False, include_v1=True):
     if return_v2:
         return enriched, diagnostics, pd.DataFrame(v2_rows)
     return enriched, diagnostics
+
+
+def _append_asset_rows(config, asset, reconstruction, rows, v2_rows, include_v1):
+    """Write one asset's results into the IAM table and the long-format package."""
+    result = reconstruction.cohorts
+    shares = reconstruction.stock_shares
+    service_shares = reconstruction.service_shares
+    targets = reconstruction.stock_targets
+    flows = reconstruction.reported_additions
+    implied = reconstruction.implied_exit
+    service_target = reconstruction.service_target
+    basis_by_cohort = reconstruction.evidence_basis
+    prefix = PREFIX + asset["id"] + "|"
+    stock_unit = asset["stock"]["unit"]
+
+    def add_v2(
+        year,
+        cohort,
+        metric,
+        value,
+        unit,
+        cohort_basis="iam_addition",
+    ):
+        """Store only positive quantities in the long-format package."""
+        if not np.isfinite(value) or value <= 0:
+            return
+        v2_rows.append(
+            {
+                "model": config["model"],
+                "scenario": config["scenario"],
+                "region": asset["region"],
+                "asset": asset["id"],
+                "year": int(year),
+                "cohort_year": int(cohort),
+                "metric": metric,
+                "value": float(value),
+                "unit": unit,
+                "evidence_basis": cohort_basis,
+            }
+        )
+
+    def add(suffix, unit, values):
+        """Store one IAM-style row with a column for each year."""
+        if not include_v1:
+            return
+        rows.append(
+            {
+                "Model": config["model"],
+                "Scenario": config["scenario"],
+                "Region": asset["region"],
+                "Variable": prefix + suffix,
+                "Unit": unit,
+                **{str(y): float(v) for y, v in zip(result.years, values, strict=True)},
+            }
+        )
+
+    for j, cohort in enumerate(result.cohorts):
+        metrics = [
+            ("stock", stock_unit, result.stock[:, j]),
+            ("stock_share", "1", shares[:, j]),
+            ("service_share", "1", service_shares[:, j]),
+        ]
+        if service_target is not None:
+            metrics.append(
+                ("service", asset["service"]["unit"], service_shares[:, j] * service_target)
+            )
+
+        # The IAM table includes explicit zeros for cohorts outside their years of use.
+        for metric, unit, values in metrics:
+            add(vintage_suffix(metric, cohort), unit, values)
+        for i, year in enumerate(result.years):
+            basis = basis_by_cohort[j]
+            for metric, unit, values in metrics:
+                add_v2(year, cohort, metric, values[i], unit, cohort_basis=basis)
+            # Retirements describe changes after the opening year.
+            if i and result.natural_exit_by_cohort is not None:
+                add_v2(
+                    year,
+                    cohort,
+                    "retirement_natural",
+                    result.natural_exit_by_cohort[i, j],
+                    stock_unit + "/yr",
+                    cohort_basis=basis,
+                )
+            if i and result.additional_exit_by_cohort is not None:
+                add_v2(
+                    year,
+                    cohort,
+                    "retirement_additional",
+                    result.additional_exit_by_cohort[i, j],
+                    stock_unit + "/yr",
+                    cohort_basis=basis,
+                )
+    # Only one build year receives additions in any given calendar year.
+    for i, year in enumerate(result.years[1:], start=1):
+        add_v2(year, year, "addition", result.inflow[i], stock_unit + "/yr")
+    totals = result.stock.sum(axis=1)
+    add(vintage_suffix("coverage"), "1", np.ones(len(result.years)))
+    add(vintage_suffix("stock"), stock_unit, totals)
+    for name, values in (
+        ("inflow", result.inflow),
+        ("natural_exit", result.natural_exit),
+        ("additional_exit", result.additional_exit),
+        ("balance", result.balance),
+        ("inflow_residual", result.inflow - flows),
+        ("implied_exit", implied),
+    ):
+        add(vintage_suffix(name), stock_unit + "/yr", values)
+    add(vintage_suffix("stock_residual"), stock_unit, totals - targets)
+    if service_target is not None:
+        add(vintage_suffix("service"), asset["service"]["unit"], service_target)
+
+
+def _asset_diagnostics(asset, reconstruction):
+    """Summarize fit errors, questionable IAM inputs and opening stock evidence."""
+    result = reconstruction.cohorts
+    targets = reconstruction.stock_targets
+    flows = reconstruction.reported_additions
+    implied = reconstruction.implied_exit
+    basis = reconstruction.evidence_basis
+    totals = result.stock.sum(axis=1)
+    joint_diagnostics = reconstruction.annualisation
+
+    def opening_share(cohorts):
+        """Return the share of opening stock supplied by the selected cohorts."""
+        return float(result.stock[0, cohorts].sum() / totals[0]) if totals[0] else 0.0
+
+    diagnostic = {
+        "asset": asset["id"],
+        "region": asset["region"],
+        "mode": asset["mode"],
+        "maximum_balance_residual": float(np.max(np.abs(result.balance[1:]))),
+        "maximum_absolute_stock_residual": float(np.max(np.abs(totals - targets))),
+        "maximum_absolute_inflow_residual": float(np.max(np.abs(result.inflow[1:] - flows[1:]))),
+        "maximum_stock_target": float(np.max(targets)),
+        "opening_prior_share": opening_share(basis == "prior"),
+        "opening_evidence_share": opening_share(basis == "observed"),
+        "total_additional_exits": float(np.sum(result.additional_exit[1:])),
+        "negative_implied_exit_years": result.years[
+            np.isfinite(implied) & (implied < -1e-12)
+        ].tolist(),
+        "implied_exits_exceed_opening_stock_years": result.years[1:][
+            implied[1:] > targets[:-1] + 1e-12
+        ].tolist(),
+        "zero_stock_years": result.years[totals == 0].tolist(),
+        "zero_service_years": result.years[reconstruction.service_shares.sum(axis=1) == 0].tolist(),
+        "configuration": asset,
+    }
+    if asset["initial"]["kind"] == "observed_shares":
+        diagnostic["observation_sha256"] = sha256_file(asset["initial"]["file"])
+    if asset["service_weighting"]["kind"] == "age_profile":
+        diagnostic["age_profile_sha256"] = sha256_file(
+            asset["service_weighting"]["age_profile_file"]
+        )
+    if joint_diagnostics is not None:
+        diagnostic["annualisation"] = joint_diagnostics
+        diagnostic["stock_residual_basis"] = (
+            "deviation from linear interpolation; source-anchor residuals reported separately"
+        )
+    return diagnostic
 
 
 def prepare_stock_vintages(
@@ -268,6 +270,7 @@ def prepare_stock_vintages(
         raise IamPreprocessorError(
             "Package-only output cannot be filtered or encrypted as a v1 IAM CSV."
         )
+    # Check all destinations together before reading the scenario or running the model.
     paths = [report_path, package_path]
     if not package_only:
         paths.append(destination)
@@ -281,6 +284,7 @@ def prepare_stock_vintages(
     enriched, diagnostics, v2 = enrich_stock_vintages(
         frame, config, return_v2=True, include_v1=not package_only
     )
+    # Record the library revision and input hashes so the run can be reproduced.
     flodym = distribution("flodym")
     flodym_origin = json.loads(flodym.read_text("direct_url.json") or "{}")
     report = ProcessingReport(
@@ -312,12 +316,18 @@ def prepare_stock_vintages(
                     "vintage_reconstruction.py",
                     "flodym_stock.py",
                     "stock_model.py",
+                    "lifetime.py",
                     "stock_config.py",
                     "stock_usage.py",
                     "stock_annualisation.py",
                     "io.py",
                     "filtering.py",
+                    "variable_maps.py",
                 )
+            },
+            "variable_mapping_sha256": {
+                name: sha256_file(Path(__file__).with_name("data") / name)
+                for name in ("vintage_output_variables.yaml", "variable_filters.yaml")
             },
             "assets": diagnostics,
             "stock_timing": "end_of_year",
@@ -349,6 +359,7 @@ def prepare_stock_vintages(
                 f"{d['asset']}/{d['region']}: additional exits follow the configured "
                 f"{d['configuration']['exit_policy']} policy. Physical disposal is unobserved."
             )
+    # Filtering applies to the IAM-style CSV. The long table keeps all reconstructed assets.
     if filter_output:
         enriched = filter_variables(enriched)
     write_vintage_package(

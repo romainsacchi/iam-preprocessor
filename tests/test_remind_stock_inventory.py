@@ -1,6 +1,6 @@
 import pandas as pd
 
-from iam_preprocessor.remind_stock_inventory import (
+from iam_preprocessor.research.remind.stock_inventory import (
     build_remind_stock_inventory,
     write_remind_stock_inventory,
 )

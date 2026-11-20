@@ -1,4 +1,4 @@
-"""Build stock-vintage configurations from native REMIND variable contracts."""
+"""Reproduce the stock-mapping defaults used in the REMIND research runs."""
 
 from __future__ import annotations
 
@@ -9,21 +9,21 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from .exceptions import DataValidationError, IamPreprocessorError
-from .io import read_frame, validate_frame, year_columns
-from .stock_registry import load_remind_asset_registry, registry_provenance
+from ...exceptions import DataValidationError, IamPreprocessorError
+from ...io import read_frame, scenario_identity, validate_frame, year_columns
+from .registry import (
+    REMIND_STOCK_NAMES,
+    is_remind_model,
+    load_remind_asset_registry,
+    registry_provenance,
+    remind_stock_variable_names,
+)
 
-AGGREGATE_REGIONS = {"World", "EUR", "EU27", "NEU"}
-
-
-def _identity(frame):
-    identity = frame[["Model", "Scenario"]].drop_duplicates().to_records(index=False).tolist()
-    if len(identity) != 1 or identity[0][0] != "REMIND":
-        raise DataValidationError("Expected one REMIND model/scenario in the input file.")
-    return identity[0]
+AGGREGATE_REGIONS = frozenset(REMIND_STOCK_NAMES["aggregate_regions"])
 
 
 def _row(frame, region, variable, unit):
+    """Find an unambiguous row with the requested region, variable and unit."""
     selected = frame.loc[
         frame["Region"].eq(region) & frame["Variable"].eq(variable) & frame["Unit"].eq(unit)
     ]
@@ -33,6 +33,7 @@ def _row(frame, region, variable, unit):
 
 
 def _value_at(row, reference_year, labels):
+    """Interpolate a positive lifetime series to the reference year."""
     values = pd.to_numeric(row[labels], errors="raise").to_numpy(float)
     if not np.isfinite(values).all() or (values <= 0).any():
         raise DataValidationError("Lifetime series must be finite and positive.")
@@ -40,20 +41,16 @@ def _value_at(row, reference_year, labels):
 
 
 def _transport_selectors(mapping):
-    suffix = mapping["variable_suffix"]
+    """Return the stock and additions required for this transport asset."""
+    stock, inflow, _ = remind_stock_variable_names(mapping)
     return (
-        {
-            "variable": f"Stock|Transport|{suffix}",
-            "unit": mapping["stock_unit"],
-        },
-        {
-            "variable": f"Sales|Transport|{suffix}",
-            "unit": mapping["inflow_unit"],
-        },
+        {"variable": stock, "unit": mapping["stock_unit"]},
+        {"variable": inflow, "unit": mapping["inflow_unit"]},
     )
 
 
 def _selectors_available(frame, region, selectors):
+    """Check that a region contains each requested variable and unit."""
     return all(
         _row(frame, region, selector["variable"], selector["unit"]) is not None
         for selector in selectors
@@ -61,29 +58,17 @@ def _selectors_available(frame, region, selectors):
 
 
 def _capacity_selectors(mapping):
-    if "stock_variable" in mapping:
-        return (
-            {"variable": mapping["stock_variable"], "unit": mapping["stock_unit"]},
-            {"variable": mapping["inflow_variable"], "unit": mapping["inflow_unit"]},
-            {"variable": mapping["lifetime_variable"], "unit": "years"},
-        )
+    """Return the stock, additions and lifetime required for this capacity asset."""
+    stock, inflow, lifetime = remind_stock_variable_names(mapping)
     return (
-        {
-            "variable": f"Cap|Electricity|{mapping['stock_suffix']}",
-            "unit": mapping["stock_unit"],
-        },
-        {
-            "variable": f"New Cap|Electricity|{mapping['inflow_suffix']}",
-            "unit": mapping["inflow_unit"],
-        },
-        {
-            "variable": f"Tech|Electricity|{mapping['lifetime_suffix']}|Lifetime",
-            "unit": "years",
-        },
+        {"variable": stock, "unit": mapping["stock_unit"]},
+        {"variable": inflow, "unit": mapping["inflow_unit"]},
+        {"variable": lifetime, "unit": "years"},
     )
 
 
 def _zero_only(rows, labels, end_year):
+    """Check whether all the selected series are zero through the end year."""
     selected = [label for label in labels if int(label) <= end_year]
     return all(
         np.allclose(
@@ -179,6 +164,7 @@ def _common_asset(
     reference_year,
     reconciliation,
 ):
+    """Build the settings shared by the REMIND research assets."""
     if base_year < reference_year:
         initial = {
             "kind": "warm_start",
@@ -246,7 +232,9 @@ def build_remind_stock_config(
     region itself is never silently skipped.
     """
     validate_frame(frame)
-    model, scenario = _identity(frame)
+    model, scenario = scenario_identity(frame)
+    if not is_remind_model(model):
+        raise DataValidationError(f"The REMIND preset cannot be used with model {model!r}.")
     labels = year_columns(frame)
     anchors = list(map(int, labels))
     reference_year = anchors[0] if reference_year is None else reference_year

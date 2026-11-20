@@ -15,6 +15,7 @@ from matplotlib.lines import Line2D
 
 from iam_preprocessor.io import read_frame
 from iam_preprocessor.stock_vintages import PREFIX
+from iam_preprocessor.variable_maps import vintage_suffix
 
 ASSETS = {
     "passenger-bev": "Passenger BEVs",
@@ -25,6 +26,7 @@ ASSETS = {
 
 
 def plot(report_path):
+    """Plot the annual reconstruction and the original IAM time points."""
     report = json.loads(report_path.read_text())
     output = report_path.parent
     frame = read_frame(report["output_path"]).set_index(["Region", "Variable"])
@@ -42,7 +44,8 @@ def plot(report_path):
             joint = diag["annualisation"]
             region = frame.loc[diag["region"]]
             unit = diag["configuration"]["stock"]["unit"]
-            for family, ax in zip(("Stock", "Inflow"), pair, strict=True):
+            for metric, ax in zip(("stock", "inflow"), pair, strict=True):
+                family = vintage_suffix(metric)
                 current = region.loc[PREFIX + asset + "|" + family, labels].to_numpy(float)
                 baseline = region.loc[PREFIX + asset + "-linear-stock|" + family, labels].to_numpy(
                     float
@@ -51,7 +54,7 @@ def plot(report_path):
                     years, baseline, color="0.5", ls="--", lw=1.4, label="Linear-stock baseline"
                 )
                 ax.plot(years, current, color="#1764a0", lw=2, label="Joint annual fit")
-                if family == "Stock":
+                if metric == "stock":
                     a = [v for v in joint["stock_anchors"] if v["year"] <= years[-1]]
                     ax.scatter(
                         [v["year"] for v in a],
@@ -82,7 +85,7 @@ def plot(report_path):
                                 label=label,
                             )
                     for suffix, linestyle in (("low", ":"), ("high", "-.")):
-                        variable = PREFIX + asset + "-inflow-penalty-" + suffix + "|Inflow"
+                        variable = PREFIX + asset + "-inflow-penalty-" + suffix + "|" + family
                         if variable in region.index:
                             ax.plot(
                                 years,
@@ -92,7 +95,7 @@ def plot(report_path):
                                 ls=linestyle,
                                 label=f"{suffix.title()} inflow penalty",
                             )
-                quantity_label = "stock / capacity" if family == "Stock" else "annual additions"
+                quantity_label = "stock / capacity" if metric == "stock" else "annual additions"
                 ax.set(
                     title=f"{title}: {quantity_label}",
                     xlabel="Year",
@@ -140,7 +143,7 @@ def plot(report_path):
                 for suffix, style, width in (("-linear-stock", "--", 1), ("", "-", 1.8)):
                     rows = region.loc[
                         region.index.str.startswith(
-                            PREFIX + asset + suffix + "|Service Share|Vintage|"
+                            PREFIX + asset + suffix + "|" + vintage_suffix("service_share", "")
                         )
                     ]
                     cohorts = np.array([int(v.split("|")[-1]) for v in rows.index])

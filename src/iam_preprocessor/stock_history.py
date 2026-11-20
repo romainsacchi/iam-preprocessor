@@ -2,36 +2,31 @@
 
 from collections import defaultdict
 from io import BytesIO
-from pathlib import Path
 from zipfile import ZipFile
 
 import numpy as np
-import yaml
 from openpyxl import load_workbook
 
 from .io import sha256_file
 from .stock_observations import US_STATES, read_eia_generators
 
 
-def registry():
-    return yaml.safe_load((Path(__file__).parent / "data/remind_stock_assets.yaml").read_text())[
-        "assets"
-    ]
-
-
 def number(value):
+    """Return a finite spreadsheet number or None for a missing value."""
     if isinstance(value, (int, float)) and np.isfinite(value):
         return float(value)
     return None
 
 
 def identifier(value):
+    """Turn an ID into text while removing spreadsheet decimal suffixes."""
     if isinstance(value, float) and value.is_integer():
         value = int(value)
     return str(value).strip()
 
 
 def selection_reason(row, mapping, *, statuses=("OP",), allow_chp=False, geography="USA"):
+    """Return the first reason a generator falls outside the selected group."""
     if row["technology"] not in mapping["source_technologies"]:
         return "different_technology"
     if row["state"] not in US_STATES:
@@ -114,6 +109,7 @@ def read_snapshot(path, year):
 
 
 def select_snapshot(records, mapping, *, statuses=("OP",), allow_chp=False, geography="USA"):
+    """Return selected generators and explain the decisions for each candidate."""
     candidates = [r for r in records if r["technology"] in mapping["source_technologies"]]
     ledger, chosen = [], []
     for row in candidates:
@@ -127,6 +123,7 @@ def select_snapshot(records, mapping, *, statuses=("OP",), allow_chp=False, geog
 
 
 def summarize(records):
+    """Total capacity by build year and report capacity with unknown build years."""
     cohorts = defaultdict(float)
     unknown = 0.0
     for r in records:
@@ -143,7 +140,7 @@ def summarize(records):
 
 
 def transition_ledger(opening, closing, mapping, asset):
-    """Disjoint contributions reconcile selected capacity without inventing retirements."""
+    """Explain capacity changes between two snapshots of the same generator fleet."""
     a = {(r["plant_id"], r["generator_id"]): r for r in opening}
     b = {(r["plant_id"], r["generator_id"]): r for r in closing}
     if len(a) != len(opening) or len(b) != len(closing):
@@ -156,6 +153,7 @@ def transition_ledger(opening, closing, mapping, asset):
         if not was and not now:
             continue
         q0, q1 = (old["capacity"] if was else 0), (new["capacity"] if now else 0)
+        # Track changes in the same generator separately from entries and exits.
         if was and now:
             if old["cohort"] != new["cohort"]:
                 event = "cohort_date_revision"
@@ -164,6 +162,7 @@ def transition_ledger(opening, closing, mapping, asset):
             else:
                 event = "continuing"
         elif was:
+            # A generator can disappear from the records without a reported retirement.
             if new is None:
                 event = "unexplained_disappearance"
             elif new["status"] == "RE":

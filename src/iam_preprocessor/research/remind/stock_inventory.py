@@ -1,4 +1,4 @@
-"""Audit REMIND stock/flow pairs against the vintage reconstruction registry."""
+"""Reproduce the inventory audit of the REMIND stock-mapping study."""
 
 from __future__ import annotations
 
@@ -7,52 +7,43 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .exceptions import DataValidationError
-from .io import read_frame, validate_frame, write_csv_atomic, year_columns
-from .remind_stock_config import AGGREGATE_REGIONS
-from .stock_registry import load_remind_asset_registry
+from ...exceptions import DataValidationError
+from ...io import read_frame, scenario_identity, validate_frame, write_csv_atomic, year_columns
+from .registry import (
+    REMIND_STOCK_NAMES,
+    is_remind_model,
+    load_remind_asset_registry,
+    remind_stock_variable_names,
+)
+from .stock_config import AGGREGATE_REGIONS
 
-
-def _stock_variable(asset):
-    if asset["sector"] == "transport":
-        return f"Stock|Transport|{asset['variable_suffix']}"
-    if "stock_variable" in asset:
-        return asset["stock_variable"]
-    return f"Cap|Electricity|{asset['stock_suffix']}"
-
-
-def _inflow_variable(asset):
-    if asset["sector"] == "transport":
-        return f"Sales|Transport|{asset['variable_suffix']}"
-    if "inflow_variable" in asset:
-        return asset["inflow_variable"]
-    return f"New Cap|Electricity|{asset['inflow_suffix']}"
-
-
-def _lifetime_variable(asset):
-    if asset["sector"] == "transport":
-        return None
-    if "lifetime_variable" in asset:
-        return asset["lifetime_variable"]
-    return f"Tech|Electricity|{asset['lifetime_suffix']}|Lifetime"
+CAPACITY_PREFIX = REMIND_STOCK_NAMES["capacity_prefix"]
+TRANSPORT_PREFIX = REMIND_STOCK_NAMES["transport_prefix"]
 
 
 def _pair(variable):
-    if variable.startswith("Cap|"):
-        return "capacity", "New " + variable
-    if variable.startswith("Stock|Transport|"):
-        return "transport", "Sales" + variable.removeprefix("Stock")
+    """Find the corresponding additions variable for a stock variable."""
+    if variable.startswith(CAPACITY_PREFIX):
+        return "capacity", REMIND_STOCK_NAMES["capacity_additions_prefix"] + variable.removeprefix(
+            CAPACITY_PREFIX
+        )
+    if variable.startswith(TRANSPORT_PREFIX):
+        return "transport", REMIND_STOCK_NAMES[
+            "transport_additions_prefix"
+        ] + variable.removeprefix(TRANSPORT_PREFIX)
     return None
 
 
 def _sector(variable):
-    if variable.startswith("Stock|Transport|"):
+    """Read the sector name from a REMIND stock variable."""
+    if variable.startswith(TRANSPORT_PREFIX):
         return "transport"
-    root = variable.removeprefix("Cap|").split("|", 1)[0]
+    root = variable.removeprefix(CAPACITY_PREFIX).split("|", 1)[0]
     return root.lower().replace(" ", "_")
 
 
 def _classification(variable, mapped, excluded, mapped_variables):
+    """Describe how the research workflow treats this source variable."""
     if variable in mapped:
         asset_id, asset = mapped[variable]
         hierarchy = asset["hierarchy"]
@@ -76,8 +67,8 @@ def _classification(variable, mapped, excluded, mapped_variables):
         return None, None, "reporting_aggregate", "overlaps registered descendant assets"
     if ancestors:
         return None, None, "below_selected_layer", "more detailed than the registered asset layer"
-    if variable.startswith("Stock|Transport|") and set(variable.split("|")).intersection(
-        {"BEV", "FCEV", "Gases", "Hybrid electric", "Liquids"}
+    if variable.startswith(TRANSPORT_PREFIX) and set(variable.split("|")).intersection(
+        REMIND_STOCK_NAMES["transport_powertrain_totals"]
     ):
         return (
             None,
@@ -91,9 +82,9 @@ def _classification(variable, mapped, excluded, mapped_variables):
 def build_remind_stock_inventory(frame, *, regions=None, end_year=None):
     """Return one auditable row per REMIND Cap/New Cap or Stock/Sales pair."""
     validate_frame(frame)
-    identities = frame[["Model", "Scenario"]].drop_duplicates()
-    if len(identities) != 1 or identities.iloc[0]["Model"] != "REMIND":
-        raise DataValidationError("Expected one REMIND model/scenario in the input file.")
+    model, _ = scenario_identity(frame)
+    if not is_remind_model(model):
+        raise DataValidationError(f"The REMIND preset cannot be used with model {model!r}.")
     labels = year_columns(frame)
     end_year = min(int(labels[-1]), 2100) if end_year is None else end_year
     if not int(labels[0]) <= end_year <= int(labels[-1]):
@@ -111,7 +102,8 @@ def build_remind_stock_inventory(frame, *, regions=None, end_year=None):
 
     registry, _ = load_remind_asset_registry()
     mapped = {
-        _stock_variable(asset): (asset_id, asset) for asset_id, asset in registry["assets"].items()
+        remind_stock_variable_names(asset)[0]: (asset_id, asset)
+        for asset_id, asset in registry["assets"].items()
     }
     excluded = registry.get("excluded_capacity_variables", {})
     variables = set(frame["Variable"])
@@ -119,7 +111,7 @@ def build_remind_stock_inventory(frame, *, regions=None, end_year=None):
     stock_variables = sorted(
         variable
         for variable in variables
-        if variable.startswith("Cap|") or variable.startswith("Stock|Transport|")
+        if variable.startswith((CAPACITY_PREFIX, TRANSPORT_PREFIX))
     )
     for stock_variable in stock_variables:
         kind, inflow_variable = _pair(stock_variable)
@@ -127,7 +119,9 @@ def build_remind_stock_inventory(frame, *, regions=None, end_year=None):
             stock_variable, mapped, excluded, mapped
         )
         asset = mapped.get(stock_variable, (None, None))[1]
-        lifetime_variable = _lifetime_variable(asset) if asset else None
+        lifetime_variable = None
+        if asset:
+            _, inflow_variable, lifetime_variable = remind_stock_variable_names(asset)
         lifetime_available = lifetime_variable is None or lifetime_variable in variables
         inflow_available = inflow_variable in variables
         if status == "unmapped" and not inflow_available:
