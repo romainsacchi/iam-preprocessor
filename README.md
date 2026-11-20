@@ -81,15 +81,21 @@ year when you run the calculation in step 3.
 
 #### Copy and edit the settings template
 
+For REMIND, start with the [filled-in REMIND mapping](examples/stock-mapping-remind.yaml).
+It covers 53 asset groups, including vehicles, electricity, heat, and fuel
+production. It uses the REMIND 3.5.2 variable names and the 2005–2100 run
+settings. Check the names and units in your export and edit the mapping if
+some assets are missing or reported differently.
+
 ```console
-cp examples/stock-mapping.yaml stock-mapping.yaml
+cp examples/stock-mapping-remind.yaml stock-mapping.yaml
 ```
 
-Edit `stock-mapping.yaml`, your copy of the
-[stock mapping template](examples/stock-mapping.yaml). For each asset, copy the
-installed stock variable name and unit from `stock-inventory.csv` into
-`stock`. Do the same for the additions variable under `inflow`. Set the
-lifetime, starting age mix, and calculation mode in this file.
+For other IAMs, copy the [generic template](examples/stock-mapping.yaml) to
+`stock-mapping.yaml`. For each asset, copy the installed stock variable name
+and unit from `stock-inventory.csv` into `stock`. Do the same for the additions
+variable under `inflow`. Use this file to set the lifetime, starting age mix,
+and calculation mode for either template.
 
 #### Generate the settings for this scenario
 
@@ -138,11 +144,10 @@ match those shares to construction exchanges is still open.
 
 ## How the stock calculation works
 
-Set `mode` for each asset in the YAML. The
-[starter YAML](examples/stock-mapping.yaml) uses `mode: stock`, so the example
-above is stock-driven. In this mode, [FLODyM] calculates how much needs to be
-built each year to reach the installed stock after retirements. The reported
-additions provide a comparison.
+Both templates use `mode: stock`. In stock mode, [FLODyM] calculates how much
+needs to be built each year to reach the installed stock after retirements.
+The reported additions provide a comparison. To try another mode, edit the
+asset settings in the YAML.
 
 ```mermaid
 flowchart TD

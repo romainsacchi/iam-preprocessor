@@ -5,6 +5,11 @@
 - [stock-mapping.yaml](stock-mapping.yaml) shows how to choose input rows and
   state assumptions for a new scenario.
   Use it with the commands in the [main README](../README.md).
+- [stock-mapping-remind.yaml](stock-mapping-remind.yaml) fills in 53 asset
+  groups for REMIND 3.5.2 from 2005 through 2100. It uses stock mode, the
+  reported lifetimes for capacity, and fixed retirement ages for vehicles.
+  Starting ages follow the steady-additions assumption from the earlier
+  REMIND runs.
 - `validate_stock_output.py` compares the saved results with the input scenario
   and checks that the stock balance closes.
 
