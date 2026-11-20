@@ -8,16 +8,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .crypto import encrypt_file
-from .exceptions import DataValidationError
-from .filtering import filter_variables
-from .io import discover_inputs, read_frame, sha256_file, write_csv_atomic, year_columns
-from .report import ProcessingReport
+from ...crypto import encrypt_file
+from ...exceptions import DataValidationError
+from ...filtering import filter_variables
+from ...io import discover_inputs, read_frame, sha256_file, write_csv_atomic, year_columns
+from ...report import ProcessingReport
+from ...variable_maps import variable_map
 
-CAPTURE_PREFIX = "Carbon Management|Carbon Capture|Industrial Processes|Industry|+|Cement"
-EMISSIONS_PREFIX = "Emi|CO2|Industrial Processes|Industry|+|Cement"
-CEMENT_PRODUCTION = "Production|Industry|Cement"
-CEMENT_ENERGY = "FE|Industry|+++|Cement"
+ADAPTER = variable_map("variables.yaml", package=__package__)
+CEMENT = ADAPTER["cement"]
 
 
 def split_cement_ccs(data: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
@@ -36,15 +35,15 @@ def split_cement_ccs(data: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
             & frame["Region"].eq(group.Region)
         )
         subset = frame.loc[mask]
-        capture_rows = subset.loc[subset["Variable"].astype(str).str.startswith(CAPTURE_PREFIX)]
-        emission_rows = subset.loc[subset["Variable"].astype(str).str.startswith(EMISSIONS_PREFIX)]
+        variables = subset["Variable"].astype(str)
+        capture_rows = subset.loc[variables.str.startswith(CEMENT["capture_prefix"])]
+        emission_rows = subset.loc[variables.str.startswith(CEMENT["emissions_prefix"])]
         if capture_rows.empty and emission_rows.empty:
             continue
 
         identity = f"{group.Model}/{group.Scenario}/{group.Region}"
         target_rows: dict[str, pd.DataFrame] = {
-            CEMENT_PRODUCTION: subset.loc[subset["Variable"].eq(CEMENT_PRODUCTION)],
-            CEMENT_ENERGY: subset.loc[subset["Variable"].eq(CEMENT_ENERGY)],
+            variable: subset.loc[variables.eq(variable)] for variable in CEMENT["ccs_output"]
         }
         for variable, rows in target_rows.items():
             if len(rows) != 1:
@@ -58,6 +57,7 @@ def split_cement_ccs(data: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
         emitted = (
             emission_rows[years].apply(pd.to_numeric, errors="raise").sum(axis=0).to_numpy(float)
         )
+        # Use the captured fraction of total CO2 to split cement production and energy use.
         denominator = capture + emitted
         rate = np.divide(
             capture,
@@ -73,7 +73,7 @@ def split_cement_ccs(data: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
             original = rows.iloc[0].copy()
             values = pd.to_numeric(original[years], errors="raise").to_numpy(float)
             ccs = original.copy()
-            ccs["Variable"] = f"{variable} w CCS"
+            ccs["Variable"] = CEMENT["ccs_output"][variable]
             ccs[years] = values * rate
             appended.append(ccs)
             frame.loc[rows.index, years] = values * (1 - rate)
@@ -103,7 +103,7 @@ def prepare_remind(
 
     destinations = Path(output_dir)
     reports: list[ProcessingReport] = []
-    for source in discover_inputs(inputs, suffixes=(".csv",)):
+    for source in discover_inputs(inputs, suffixes=(".csv", ".mif")):
         frame = read_frame(source)
         report = ProcessingReport(
             model="remind",
@@ -111,9 +111,10 @@ def prepare_remind(
             input_sha256=sha256_file(source),
             input_rows=len(frame),
         )
-        excluded = {"EU27"}
-        if "EU21" in source.name:
-            excluded.update({"EUR", "NEU"})
+        excluded = set(ADAPTER["regions"]["exclude"])
+        for marker, regions in ADAPTER["regions"]["exclude_by_filename"].items():
+            if marker in source.name:
+                excluded.update(regions)
         removed = int(frame["Region"].isin(excluded).sum())
         frame = frame.loc[~frame["Region"].isin(excluded)].copy()
         if removed:
@@ -123,7 +124,7 @@ def prepare_remind(
 
         frame, warnings = split_cement_ccs(frame)
         report.warnings.extend(warnings)
-        for variable in (f"{CEMENT_PRODUCTION} w CCS", f"{CEMENT_ENERGY} w CCS"):
+        for variable in CEMENT["ccs_output"].values():
             if frame["Variable"].eq(variable).any():
                 report.derived_variables.append(variable)
 

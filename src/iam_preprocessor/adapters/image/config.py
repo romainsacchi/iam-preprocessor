@@ -9,12 +9,14 @@ from typing import Any
 
 import yaml
 
-from .exceptions import ConfigurationError
+from ...exceptions import ConfigurationError
+from ...variable_maps import variable_map
 
-BEV_CLASSES = ("Medium Truck", "Heavy Truck")
+BEV_CLASSES = tuple(variable_map("variables.yaml", package=__package__)["bev_trucks"]["classes"])
 
 
 def _positive_float(value: Any, label: str) -> float:
+    """Read a positive numeric setting from the IMAGE preparation file."""
     try:
         number = float(value)
     except (TypeError, ValueError) as exc:
@@ -69,6 +71,7 @@ class SecConfig:
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
+    """Read a mapping from the requested YAML file."""
     try:
         payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except OSError as exc:
@@ -92,7 +95,7 @@ def load_sec_config(
     precedence over both YAML sources.
     """
 
-    default_path = Path(str(files("iam_preprocessor").joinpath("data/default_sec.yaml")))
+    default_path = Path(str(files(__package__).joinpath("data", "default_sec.yaml")))
     merged = _read_yaml(default_path)
     merged_transport = dict(merged.get("transport_sec_mj_per_service_km", {}))
     merged_bev = dict(merged.get("bev_truck_sec_mj_per_tkm", {}))
@@ -105,9 +108,9 @@ def load_sec_config(
             merged["negative_residual_tolerance_ej"] = override["negative_residual_tolerance_ej"]
 
     if medium_bev_sec is not None:
-        merged_bev["Medium Truck"] = medium_bev_sec
+        merged_bev[BEV_CLASSES[0]] = medium_bev_sec
     if heavy_bev_sec is not None:
-        merged_bev["Heavy Truck"] = heavy_bev_sec
+        merged_bev[BEV_CLASSES[1]] = heavy_bev_sec
 
     transport = {
         str(key): _positive_float(value, f"SEC for {key}")

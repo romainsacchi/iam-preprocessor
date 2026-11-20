@@ -1,0 +1,19 @@
+schema_version: 1
+scenario: SSP2-NPi2025
+protocol_version: 1
+power_initial_year: 2020
+power_development_year: 2021
+power_holdout_year: 2022
+vehicle_initial_years:
+- 2014
+- 2016
+- 2018
+- 2020
+- 2022
+service_year: 2022
+service_coverage_min: 0.9
+service_bin_coverage_min: 0.8
+material_bin_share: 0.05
+vehicle_decay_sensitivity: 0.03
+fit_retirement_parameters: false
+native_stock_year: 2020

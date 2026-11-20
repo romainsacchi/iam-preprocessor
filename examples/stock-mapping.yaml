@@ -1,0 +1,31 @@
+# Settings apply to every region in the scenario file. Replace the variable names, units and
+# assumptions with the definitions in your scenario and source documentation.
+schema_version: 2
+assets:
+  - id: solar-pv
+    mode: stock
+    exit_policy: error
+    stock:
+      variable: Capacity|Electricity|Solar PV
+      unit: GW
+    inflow:
+      variable: Capacity Additions|Electricity|Solar PV
+      unit: GW/yr
+    inflow_timing:
+      kind: sampled_annual
+      provenance: Illustrative assumption that the file reports annual rates at anchor years.
+    lifetime:
+      distribution: fixed
+      mean: 30
+      initial_mean: 30
+      interpretation: All cohorts retire at the stated age.
+      provenance: Illustrative lifetime in years.
+    initial:
+      kind: equilibrium
+      maximum_age: 30
+      acknowledge_prior: true
+      provenance: Illustrative opening composition based on stationary past additions.
+    service_weighting:
+      kind: equal
+      annual_age_decay: 0
+      provenance: Illustrative equal service per unit of surviving capacity.

@@ -3,8 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from iam_preprocessor.exceptions import DataValidationError
-from iam_preprocessor.message import (
+from iam_preprocessor.adapters.message.preparation import (
     MESSAGE_DERIVED_DRI_ROUTES,
     MESSAGE_DRI_EAF,
     MESSAGE_H_DRI_EAF,
@@ -15,7 +14,8 @@ from iam_preprocessor.message import (
     prepare_message,
     split_message_dri_routes,
 )
-from iam_preprocessor.remind import split_cement_ccs
+from iam_preprocessor.adapters.remind.preparation import split_cement_ccs
+from iam_preprocessor.exceptions import DataValidationError
 from iam_preprocessor.tiam_ucl import (
     TIAM_DEFAULT_H_DRI_HYDROGEN_KG_PER_TONNE_STEEL,
     TIAM_H_DRI_HYDROGEN,

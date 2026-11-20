@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "iam-preprocessor"
+name = "iam-prep-for-premise"
 version = "0.1.1"
-description = "Transparent preprocessing of IAM scenario data for premise"
+description = "Prepares IAM scenario files for premise and reconstructs the build-year mix of assets for dynamic LCA with TRAILS."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "BSD-3-Clause" }
@@ -29,21 +29,32 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+stocks = [
+  "flodym @ git+https://github.com/pik-piam/flodym.git@c3083e611b9bdc739e0aa64c1fa61a0ace355e5f",
+  "scipy>=1.13",
+  "pyarrow>=15",
+  "osqp==1.0.4",
+]
 dev = [
   "pytest>=8",
   "pytest-cov>=5",
   "ruff>=0.6",
   "sphinx>=7",
+  "flodym @ git+https://github.com/pik-piam/flodym.git@c3083e611b9bdc739e0aa64c1fa61a0ace355e5f",
+  "scipy>=1.13",
+  "pyarrow>=15",
+  "osqp==1.0.4",
 ]
 
 [project.scripts]
+iam-prep-for-premise = "iam_preprocessor.cli:main"
 iam-preprocessor = "iam_preprocessor.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-iam_preprocessor = ["data/*.yaml"]
+"*" = ["data/*.yaml"]
 
 [tool.pytest.ini_options]
 addopts = "--cov=iam_preprocessor --cov-report=term-missing"

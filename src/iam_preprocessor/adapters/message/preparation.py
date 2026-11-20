@@ -1,4 +1,4 @@
-"""MESSAGE region cleanup workflow."""
+"""Prepare MESSAGE regions and derive finished steel production by route."""
 
 from __future__ import annotations
 
@@ -8,32 +8,36 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .crypto import encrypt_file
-from .exceptions import DataValidationError
-from .filtering import filter_variables
-from .io import discover_inputs, read_frame, sha256_file, write_csv_atomic, year_columns
-from .report import ProcessingReport
+from ...crypto import encrypt_file
+from ...exceptions import DataValidationError
+from ...filtering import filter_variables
+from ...io import discover_inputs, read_frame, sha256_file, write_csv_atomic, year_columns
+from ...report import ProcessingReport
+from ...variable_maps import variable_map
 
-MESSAGE_DRI_EAF = "Production|Iron and Steel|Steel|Primary|EAF|Sponge Iron"
-MESSAGE_SPONGE_IRON_H2 = "Production|Iron and Steel|Sponge Iron|Hydrogen"
-MESSAGE_SPONGE_IRON_GAS_CCS = "Production|Iron and Steel|Sponge Iron|Gas|w/ CCS"
+ADAPTER = variable_map("settings.yaml", package=__package__)
+DRI_VARIABLES = ADAPTER["dri_variables"]
+
+MESSAGE_DRI_EAF = DRI_VARIABLES["finished_steel"]
+MESSAGE_SPONGE_IRON_H2 = DRI_VARIABLES["hydrogen_sponge_iron"]
+MESSAGE_SPONGE_IRON_GAS_CCS = DRI_VARIABLES["gas_ccs_sponge_iron"]
 MESSAGE_SPONGE_IRON_ROUTES = (
-    "Production|Iron and Steel|Sponge Iron|Coal|w/o CCS",
-    "Production|Iron and Steel|Sponge Iron|Gas|w/o CCS",
+    DRI_VARIABLES["coal_sponge_iron"],
+    DRI_VARIABLES["gas_sponge_iron"],
     MESSAGE_SPONGE_IRON_GAS_CCS,
     MESSAGE_SPONGE_IRON_H2,
 )
 
-MESSAGE_H_DRI_EAF = "Production|Industry|Iron and Steel|H-DRI/EAF"
-MESSAGE_NG_DRI_EAF = "Production|Industry|Iron and Steel|NG-DRI/EAF"
-MESSAGE_NG_DRI_EAF_CCS = "Production|Industry|Iron and Steel|NG-DRI/EAF + CCS"
+MESSAGE_H_DRI_EAF = DRI_VARIABLES["hydrogen_finished_steel"]
+MESSAGE_NG_DRI_EAF = DRI_VARIABLES["gas_finished_steel"]
+MESSAGE_NG_DRI_EAF_CCS = DRI_VARIABLES["gas_ccs_finished_steel"]
 MESSAGE_DERIVED_DRI_ROUTES = (
     MESSAGE_NG_DRI_EAF,
     MESSAGE_NG_DRI_EAF_CCS,
     MESSAGE_H_DRI_EAF,
 )
 
-MESSAGE_GLOBAL_REGIONS = ("World", "R12_GLB", "GLB")
+MESSAGE_GLOBAL_REGIONS = tuple(ADAPTER["global_regions"])
 MESSAGE_DRI_SPLIT_TOLERANCE = 1e-9
 
 
@@ -227,7 +231,7 @@ def prepare_message(
     key_file: str | Path | None = None,
     overwrite: bool = False,
 ) -> list[ProcessingReport]:
-    """Normalize MESSAGE regions and prepare filtered premise CSV files."""
+    """Derive MESSAGE steel routes, clean up region names, and write premise CSV files."""
 
     destinations = Path(output_dir)
     reports: list[ProcessingReport] = []
@@ -265,12 +269,20 @@ def prepare_message(
                 "source_variables": sorted({MESSAGE_DRI_EAF, *MESSAGE_SPONGE_IRON_ROUTES}),
                 "derived_variables": list(MESSAGE_DERIVED_DRI_ROUTES),
             }
-        frame["Region"] = frame["Region"].astype(str).str.replace("R12_", "", regex=False)
+        frame["Region"] = (
+            frame["Region"]
+            .astype(str)
+            .str.replace(ADAPTER["region_label_fragment"], "", regex=False)
+        )
         before = len(frame)
-        frame = frame.loc[~frame["Region"].eq("GLB")].copy()
+        frame = frame.loc[~frame["Region"].isin(ADAPTER["exclude_regions"])].copy()
         removed = before - len(frame)
         if removed:
-            report.warnings.append(f"Removed {removed} GLB rows.")
+            report.warnings.append(
+                f"Removed {removed} rows for excluded regions: "
+                + ", ".join(ADAPTER["exclude_regions"])
+                + "."
+            )
 
         if filter_output:
             frame = filter_variables(frame)

@@ -14,10 +14,12 @@ from .exceptions import DataValidationError
 from .filtering import filter_variables
 from .io import discover_inputs, read_frame, sha256_file, write_csv_atomic, year_columns
 from .report import ProcessingReport
+from .variable_maps import variable_map
 
-TIAM_H_DRI_PRODUCTION = "Production|Steel|Secondary|DRH2 and EAF"
-TIAM_H_DRI_PRODUCTION_PRODUCT = f"{TIAM_H_DRI_PRODUCTION}|Steel"
-TIAM_H_DRI_HYDROGEN = "Final Energy|Production|Steel|Secondary|DRH2 and EAF|Hydrogen"
+DRI_VARIABLES = variable_map("tiam_ucl_variables.yaml")
+TIAM_H_DRI_PRODUCTION = DRI_VARIABLES["finished_steel"]
+TIAM_H_DRI_PRODUCTION_PRODUCT = DRI_VARIABLES["finished_steel_alias"]
+TIAM_H_DRI_HYDROGEN = DRI_VARIABLES["hydrogen_final_energy"]
 
 # The premise H2-DRI/EAF inventory consumes 1.061992 kg of H2-DRI pig iron per
 # kg of finished steel. Producing that pig iron consumes 0.06264 kg H2/kg.

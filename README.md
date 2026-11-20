@@ -1,239 +1,249 @@
-# iam-preprocessor
+# iam-prep-for-premise
 
-`iam-preprocessor` is a Python library and command-line application that turns
-integrated assessment model (IAM) scenario exports into files ready to be
-consumed by [`premise`](https://github.com/polca/premise).
+Prepares IAM scenario files for [premise] and reconstructs the build-year mix of
+assets for dynamic LCA with [TRAILS].
 
-It provides reproducible model-specific transformations, selects the variables
-used by `premise`, writes consistently formatted scenario files, and can encrypt
-the results with the standard Premise key.
+For example, the tool can estimate how much of the solar capacity still
+operating in 2040 was built in 2025.
 
-## Supported workflows
+The estimates are preliminary. They use reported capacity and additions,
+equipment lifetimes, and information about the assets already in use at the
+start. The same workflow is designed for integrated assessment models (IAMs)
+used with `premise`, including [REMIND], [IMAGE], and [MESSAGE]. For each asset,
+choose the input rows and specify how long the assets last.
 
-| IAM | Processing |
-| --- | --- |
-| IMAGE | Derives transport energy-service variables, including explicit battery-electric medium- and heavy-truck variables when SEC assumptions are supplied. |
-| MESSAGE | Splits aggregate DRI/EAF steel into mutually exclusive NG-DRI, NG-DRI+CCS, and H-DRI routes, normalizes region labels, and removes the unsupported global aggregate. |
-| REMIND | Splits cement production and energy use into CCS and non-CCS variables and removes legacy aggregate regions. |
-| TIAM-UCL | Derives H-DRI hydrogen final energy from reported finished-steel production using an explicit, configurable inventory-consistent intensity. |
-| Any supported table | Filters variables using the `premise` variable-prefix allowlist. |
+## Start here
 
-Inputs can be CSV or Excel files. Each model workflow writes a semicolon-delimited
-CSV and a JSON processing report containing source and output hashes, row counts,
-effective non-secret assumptions, and validation warnings. Existing outputs are
-protected unless `--overwrite` is supplied.
+- The method, inputs, outputs, and limitations. [Stock-vintage guide](docs/stock-vintages.md)
+- The short guides and research notes. [Documentation list](docs/README.md)
+- The files to use for a first run. [Examples](examples/README.md)
+- The Python modules and functions. [Python API](docs/api.rst)
 
 ## Installation
 
-Python 3.10 or newer is required.
+[Python] 3.10 or newer is required. Install the package with [pip].
 
 ```console
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e .
+python -m pip install -e '.[stocks]'
 ```
 
-Install the development dependencies when running tests or building the API
-documentation:
+Python imports use `iam_preprocessor`. Existing scripts can also use the
+`iam-preprocessor` command.
+
+## Run the workflow
+
+### 1. Prepare the scenario file
+
+**For a scenario CSV for premise**, run `prepare` with its default filter. It
+puts the table in a standard format and keeps the rows selected for premise.
 
 ```console
-python -m pip install -e ".[dev]"
+iam-prep-for-premise prepare scenario.xlsx -o output/premise
 ```
 
-## Command-line usage
+This writes `output/premise/scenario_filtered.csv` and
+`output/premise/scenario_report.json`. If you only need the scenario CSV, stop
+here.
 
-Process one file, several files, or every supported file directly inside an
-input directory:
+**To build stock vintages**, use `--no-filter` to keep the stock and addition
+rows needed in steps 2 and 3.
 
 ```console
-iam-preprocessor message message-inputs --output-dir processed/message
-iam-preprocessor remind remind-inputs --output-dir processed/remind
-iam-preprocessor tiam-ucl tiam-inputs --output-dir processed/tiam-ucl
-iam-preprocessor image image-inputs --output-dir processed/image \
-  --sec-config assumptions.yaml
+iam-prep-for-premise prepare scenario.xlsx -o output/input --no-filter
 ```
 
-Run `iam-preprocessor COMMAND --help` for all options available to a workflow.
+This writes `output/input/scenario_processed.csv` and
+`output/input/scenario_report.json`. Use that CSV in steps 2 and 3. If you
+already have a CSV, MIF, or Excel file with one model and scenario, one column
+per year, and all the required rows, you can start at step 2 with that file.
 
-## Model-specific transformations
+For a file with several scenarios, use `stock-inventory` to find the exact
+labels, then add `--scenario "Scenario label"` to `prepare`. Add
+`--model "Model label"` if the scenario name occurs under more than one model.
+See the [command-line guide](docs/usage.rst) for optional corrections to files
+from specific models.
 
-### IMAGE
+### 2. Choose the rows and assumptions for each asset
 
-The IMAGE workflow:
-
-- converts final-energy rows from PJ/yr to EJ/yr when needed and rejects
-  unsupported transport-energy units;
-- derives passenger and freight energy-service variables from final energy using
-  the configured specific energy consumption (SEC), with outputs expressed in
-  billion pkm/yr or billion tkm/yr; and
-- derives explicit battery-electric medium- and heavy-truck final energy and
-  service variables from the residual between total truck electricity and
-  reconstructed plug-in-hybrid electricity use.
-
-World BEV truck values are calculated as the sum of the derived regional values
-because IMAGE does not provide the World-level plug-in-hybrid efficiency rows
-needed for a direct calculation.
-
-The BEV derivation requires reviewed medium- and heavy-truck SEC assumptions in
-MJ/tkm:
-
-```yaml
-bev_truck_sec_mj_per_tkm:
-  Medium Truck: 1.0
-  Heavy Truck: 0.5
-```
-
-The numbers above only illustrate the configuration format; they are not
-recommended scientific assumptions. Values can instead be passed with
-`--medium-bev-sec` and `--heavy-bev-sec`. Use `--skip-bev` to disable the BEV
-derivation or `--strict` to reject material negative residuals.
-
-### MESSAGE
-
-The MESSAGE workflow normalizes the region dimension by removing the `R12_`
-prefix from region labels and dropping `GLB` aggregate rows. Exact duplicate
-source rows are removed before validation.
-
-MESSAGE reports reduction-route activity as sponge iron but only reports
-finished primary DRI/EAF steel as an aggregate. The workflow derives three
-mutually exclusive finished-steel variables:
-
-- `Production|Industry|Iron and Steel|NG-DRI/EAF`;
-- `Production|Industry|Iron and Steel|NG-DRI/EAF + CCS`; and
-- `Production|Industry|Iron and Steel|H-DRI/EAF`.
-
-For each scenario and year, the reported World finished DRI/EAF steel-to-total
-sponge-iron conversion factor is applied to regional hydrogen and gas-with-CCS
-sponge iron. The remaining non-H2/non-CCS output uses premise's existing
-NG-DRI inventory proxy. This residual includes MESSAGE's coal-without-CCS
-sponge-iron remainder because premise has no separate coal-DRI inventory
-category. This construction preserves the original aggregate DRI/EAF output in
-every region and year and preserves World versus regional totals. When no
-explicit World row is available, regional sums determine the conversion
-factor. Missing inputs skip the derivation with a report warning; inconsistent
-units, negative residuals, or non-closing results fail validation.
-
-The workflow does not invent route-specific energy-use series. MESSAGE's
-reported DRI/EAF energy use remains aggregate and should not be assigned to one
-of the derived routes as if it were route-specific.
-
-### REMIND
-
-The REMIND workflow:
-
-- removes `EU27` rows;
-- also removes the overlapping `EUR` and `NEU` aggregates when processing an
-  input whose filename contains `EU21`; and
-- derives a cement CCS share from reported carbon capture and process emissions,
-  then splits cement production and final-energy use between the original
-  non-CCS rows and new `w CCS` rows.
-
-Zero capture-plus-emissions denominators produce a zero CCS share. Rates outside
-the interval from zero to one are clipped and recorded as validation warnings.
-
-### TIAM-UCL
-
-TIAM-UCL reports finished H-DRI/EAF steel production but omits the associated
-hydrogen input from its exported final-energy coordinates. The workflow adds
-`Final Energy|Production|Steel|Secondary|DRH2 and EAF|Hydrogen` in PJ/yr for
-every reported region and year.
-
-The default intensity is 66.52317888 kg H2 per tonne of finished steel,
-equivalent to 7.9827814656 PJ H2 per Mt steel with a hydrogen lower heating
-value of 120 GJ/t. It is calculated from the premise H2-DRI/EAF inventory's
-1.061992 kg H2-DRI pig-iron input per kg steel and 0.06264 kg hydrogen input per
-kg H2-DRI pig iron. Override it explicitly with
-`--h-dri-hydrogen-kg-per-tonne-steel` when a reviewed TIAM-specific coefficient
-becomes available.
-
-Processing reports label the coordinate as a derived proxy rather than an
-original TIAM-UCL observation and record the effective intensity, conversion,
-inventory coefficients, and references. The workflow rejects negative or
-non-numeric production, incompatible units, inconsistent duplicate production
-aliases, and non-closing World totals. TIAM-UCL's distinct transport-efficiency
-variants that share a public IAM identity are preserved and reported rather
-than silently discarded.
-
-## Variable filtering
-
-Model workflows filter their results by default. A scenario table can also be
-filtered independently:
+#### Find the variables in your scenario
 
 ```console
-iam-preprocessor filter scenario.csv --output-dir processed
+iam-prep-for-premise stock-inventory output/input/scenario_processed.csv \
+  -o stock-inventory.csv
 ```
 
-Pass `--no-filter` to a model workflow when the complete transformed table is
-needed.
+`stock-inventory` reads the scenario CSV from step 1 and creates
+`stock-inventory.csv`. Open this list to look up the exact variable names and
+units available in each region. The scenario CSV supplies the values for each
+year when you run the calculation in step 3.
 
-## Encryption
+#### Copy and edit the settings template
 
-The application loads `PREMISE_KEY` from the process environment or from the
-nearest `.env` file in the current directory or its parents. Create a local file
-from the tracked template and restrict it to the current user:
+For REMIND, start with the [filled-in REMIND mapping](examples/stock-mapping-remind.yaml).
+It covers 53 asset groups, including vehicles, electricity, heat, and fuel
+production. It uses the REMIND 3.5.2 variable names and the 2005–2100 run
+settings. Check the names and units in your export and edit the mapping if
+some assets are missing or reported differently.
 
 ```console
-cp .env.example .env
-chmod 600 .env
+cp examples/stock-mapping-remind.yaml stock-mapping.yaml
 ```
 
-```dotenv
-PREMISE_KEY=your-fernet-key
-```
+For other IAMs, copy the [generic template](examples/stock-mapping.yaml) to
+`stock-mapping.yaml`. For each asset, copy the installed stock variable name
+and unit from `stock-inventory.csv` into `stock`. Do the same for the additions
+variable under `inflow`. Use this file to set the lifetime, starting age mix,
+and calculation mode for either template.
 
-The `.env` file is ignored by Git. An existing `PREMISE_KEY` or the compatible
-`IAM_PREPROCESSOR_KEY` environment variable takes precedence over `.env`. A
-protected `--key-file` takes precedence over all environment sources.
-
-Encrypt or decrypt individual files with:
+#### Generate the settings for this scenario
 
 ```console
-iam-preprocessor encrypt processed.csv encrypted.csv
-iam-preprocessor decrypt encrypted.csv recovered.csv
+iam-prep-for-premise stock-config output/input/scenario_processed.csv \
+  --mapping stock-mapping.yaml -o stocks.yaml
 ```
 
-Model workflows can create encrypted copies directly:
+`stock-config` reads your edited `stock-mapping.yaml` and the scenario CSV.
+It fills in the model, scenario, and years, applies your settings to every
+region, and checks that the chosen rows are present. If a required row is
+missing, the command tells you which region and variable need attention.
+
+The result is `stocks.yaml`, the settings file you pass to `stock-vintages`
+in step 3. To change your choices, edit `stock-mapping.yaml` and rerun
+`stock-config` with `--overwrite`.
+
+### 3. Calculate and save stock by build year
 
 ```console
-iam-preprocessor message message-inputs \
-  --output-dir processed \
-  --encrypt-to encrypted
+iam-prep-for-premise stock-vintages output/input/scenario_processed.csv \
+  --config stocks.yaml -o output/stocks
 ```
 
-Keys are never accepted as command-line values, written to processing reports,
-or included in tracked files.
+The command reads the scenario file and writes the results separately.
+The scenario keeps its reported year columns.
 
-## Python API
-
-The same workflows are available as Python functions:
-
-```python
-from iam_preprocessor import prepare_message
-
-reports = prepare_message(
-    ["/path/to/MESSAGE.csv"],
-    "/path/to/processed",
-)
-
-for report in reports:
-    print(report.output_path, report.output_rows)
+```text
+output/stocks/
+  scenario_processed_stock_vintages_report.json
+  scenario_processed_stock_vintages_v2/
+    vintages.parquet
+    datapackage.json
+    validation.json
 ```
 
-The public API also provides `prepare_image`, `prepare_remind`, `prepare_tiam_ucl`,
-`filter_variables`, `encrypt_file`, `decrypt_file`, and the transport derivation
-functions. Build the complete API reference with:
+- Each row of the **Parquet table** gives a region, asset, year in use, build
+  year, and result type. The package also has a file list and a summary of the
+  stock and share checks.
+- The **run report** records the input and settings used. The reports flag
+  failed checks and any changes joint mode made to reported additions. A
+  successful run has a short validation summary. Add `--detailed-report` to
+  see the results of each check by asset and region.
+
+The proposed handoff gives premise the IAM scenario on its reported year grid
+and supplies the annual build-year shares in a separate file. How premise will
+match those shares to construction exchanges is still open.
+
+## Steel data for premise
+
+The MESSAGE adapter estimates three finished-steel routes from reported
+sponge iron and total DRI/EAF output. Use `prepare --adapter message` to apply
+it. The `tiam-ucl` command estimates the hydrogen demand for finished
+hydrogen-based DRI/EAF steel. See the [command-line guide](docs/usage.rst)
+for the inputs and assumptions.
+
+## How the stock calculation works
+
+Both templates use `mode: stock`. In stock mode, [FLODyM] calculates how much
+needs to be built each year to reach the installed stock after retirements.
+The reported additions provide a comparison. To try another mode, edit the
+asset settings in the YAML.
+
+```mermaid
+flowchart TD
+    inputs["IAM stock and additions<br/>Starting ages and lifetimes"] --> mode{"Mode in the YAML"}
+    mode -->|stock| stock["FLODyM infers additions<br/>from installed stock"]
+    mode -->|inflow| inflow["FLODyM projects stock<br/>from reported additions"]
+    mode -->|stock_flow| balance["Keep both annual series<br/>and work out early retirements"]
+    mode -->|joint| fit["SciPy checks what can be matched<br/>OSQP fits annual additions"]
+    fit --> projection["FLODyM projects stock<br/>from the fitted additions"]
+    stock --> results["Stock and shares by build year"]
+    inflow --> results
+    balance --> results
+    projection --> results
+    results -.-> premise["Proposed premise step<br/>Match shares to construction exchanges"]
+    premise -.-> trails["TRAILS follows construction demand<br/>and calculates impacts over time"]
+```
+
+`joint` is optional and is useful when the IAM reports stock and additions
+at intervals. [SciPy] checks whether both can be matched given the starting
+stock and retirement assumptions. [OSQP] then chooses a smooth series of annual
+additions that matches the reported stock levels. It also matches the reported
+additions whenever possible. This repo runs the fit and passes the fitted
+additions to FLODyM, which then makes an additions-driven projection.
+
+If the two series cannot both be matched, `annualisation.inflow_constraints`
+sets what happens. With `strict`, the run stops. With `penalized`, the fit
+keeps the reported stock levels and the run report shows any differences in
+additions. See the
+[joint fit guide](docs/joint-stock-annualisation.md) for the settings.
+
+In stock-driven runs, normal retirements can leave more capacity than the IAM
+reports. Jakob Dürrwächter's FLODyM changes let the model retire some of that
+capacity early, for example by increasing the retirement risk for that year.
+The installation uses that FLODyM revision. [FLODyM PR #261](https://github.com/pik-piam/flodym/pull/261)
+
+## How the code is divided
+
+| Module | Responsibility |
+| --- | --- |
+| `stock_workflow.py` | List variables and check the selected rows against the scenario. |
+| `stock_config.py` | Check the YAML settings and find the files they refer to. |
+| `vintage_inputs.py` | Read the selected rows and fill in years between reported values. |
+| `vintage_reconstruction.py` | Estimate one asset's build-year groups and their shares. |
+| `stock_model.py` and `flodym_stock.py` | Work out how much stock survives, is added, or retires. |
+| `stock_annualisation.py` | Fit annual additions to reported stock and addition data. |
+| `stock_vintages.py` and `stock_package.py` | Check and write the results for all selected assets. |
+
+Every IAM uses the same YAML format for the stock calculation. Optional code
+that corrects input files lives under `adapters/`.
+
+## Tests and documentation
+
+Use [Ruff] for linting and formatting, [pytest] for tests, and [Sphinx] to build
+the documentation.
 
 ```console
-sphinx-build -W -b html docs docs/_build/html
-```
-
-## Development
-
-```console
-ruff check src tests
-ruff format --check src tests
+ruff check src tests examples
+ruff format --check src tests examples
 pytest
 sphinx-build -W -b html docs docs/_build/html
 ```
 
-The project is licensed under the BSD 3-Clause License.
+Tests use small made-up datasets. The repository excludes private input files,
+generated results, and encryption keys. Use `--overwrite` to replace existing
+outputs.
+
+## Authors
+
+- Romain Sacchi (PSI) [@romainsacchi](https://github.com/romainsacchi)
+- Jakob Dürrwächter (PIK) [@JakobBD](https://github.com/JakobBD)
+- David Bantje (PIK) [@dbantje](https://github.com/dbantje)
+
+## License
+
+The project uses the BSD 3-Clause License.
+
+[premise]: https://github.com/polca/premise
+[TRAILS]: https://trails.readthedocs.io/en/latest/index.html
+[REMIND]: https://www.pik-potsdam.de/en/institute/departments/transformation-pathways/models/remind
+[IMAGE]: https://www.pbl.nl/en/image/about
+[MESSAGE]: https://docs.messageix.org/en/stable/
+[Python]: https://www.python.org/
+[pip]: https://pip.pypa.io/en/stable/
+[FLODyM]: https://github.com/pik-piam/flodym
+[SciPy]: https://scipy.org/
+[OSQP]: https://osqp.org/
+[Ruff]: https://docs.astral.sh/ruff/
+[pytest]: https://docs.pytest.org/en/stable/
+[Sphinx]: https://www.sphinx-doc.org/en/master/

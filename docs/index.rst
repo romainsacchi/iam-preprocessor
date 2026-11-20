@@ -1,14 +1,15 @@
-iam-preprocessor
-================
+iam-prep-for-premise
+====================
 
-``iam-preprocessor`` provides transparent, tested transformations for preparing
-IAM scenario tables for premise. No scenario data or cryptographic keys are part
-of the package.
+Prepares IAM scenario files for premise and reconstructs the build-year mix of
+assets for dynamic LCA with TRAILS. See ``docs/README.md`` for the guides and notes
+from earlier studies.
 
 .. toctree::
    :maxdepth: 2
 
    usage
    methodology
+   stock_vintages
    security
    api

@@ -15,6 +15,18 @@ from .exceptions import DataValidationError, IamPreprocessorError
 
 REQUIRED_COLUMNS = ("Model", "Scenario", "Region", "Variable", "Unit")
 YEAR_PATTERN = re.compile(r"^\d{4}$")
+IAM_SUFFIXES = (".csv", ".mif", ".xlsx", ".xls")
+
+
+def scenario_identity(frame: pd.DataFrame) -> tuple[str, str]:
+    """Return the original model and scenario labels for a single scenario."""
+    selected = frame[["Model", "Scenario"]].drop_duplicates()
+    if len(selected) != 1:
+        raise DataValidationError("Expected one model and scenario in the input table.")
+    model, scenario = selected.iloc[0]
+    if any(not isinstance(value, str) or not value.strip() for value in (model, scenario)):
+        raise DataValidationError("Model and scenario labels must be nonempty strings.")
+    return model, scenario
 
 
 def sha256_file(path: str | Path) -> str:
@@ -41,6 +53,8 @@ def normalize_columns(data: pd.DataFrame) -> pd.DataFrame:
             if YEAR_PATTERN.match(str(column).strip())
         }
     )
+    known = {name.casefold(): name for name in REQUIRED_COLUMNS}
+    frame = frame.rename(columns=lambda column: known.get(str(column).strip().casefold(), column))
     return frame
 
 
@@ -92,8 +106,18 @@ def read_frame(
     source = Path(path)
     suffix = source.suffix.lower()
     if suffix in {".xlsx", ".xls"}:
-        frame = pd.read_excel(source)
-    elif suffix == ".csv":
+        with pd.ExcelFile(source) as workbook:
+            sheets = []
+            for sheet in workbook.sheet_names:
+                header = normalize_columns(pd.read_excel(workbook, sheet_name=sheet, nrows=0))
+                if set(REQUIRED_COLUMNS).issubset(header.columns) and year_columns(header):
+                    sheets.append(sheet)
+            if len(sheets) != 1:
+                raise DataValidationError(
+                    f"Expected one IAM data sheet in {source.name}; found {sheets}."
+                )
+            frame = pd.read_excel(workbook, sheet_name=sheets[0])
+    elif suffix in {".csv", ".mif"}:
         with source.open("r", encoding="utf-8-sig", errors="replace") as stream:
             first_line = stream.readline()
         separator = ";" if first_line.count(";") > first_line.count(",") else ","

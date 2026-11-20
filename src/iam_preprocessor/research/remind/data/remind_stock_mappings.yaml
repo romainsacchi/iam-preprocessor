@@ -1,0 +1,700 @@
+schema_version: 1
+model: REMIND
+assets:
+  pv:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: Solar|+|PV
+    inflow_suffix: Solar|+|PV
+    lifetime_suffix: Solar|PV
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: [solar-pv]
+  ccgt:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: Gas|CC|+|w/o CC
+    inflow_suffix: Gas|CC|+|w/o CC
+    lifetime_suffix: Gas|Combined Cycle w/o CC
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: [gas-combined-cycle-without-ccs]
+  wind-onshore:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: Wind|+|Onshore
+    inflow_suffix: Wind|+|Onshore
+    lifetime_suffix: Wind|Onshore
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  wind-offshore:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: Wind|+|Offshore
+    inflow_suffix: Wind|+|Offshore
+    lifetime_suffix: Wind|Offshore
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  nuclear:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: +|Nuclear
+    inflow_suffix: +|Nuclear
+    lifetime_suffix: Nuclear
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  gas-turbine:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: Gas|GT
+    inflow_suffix: Gas|GT
+    lifetime_suffix: Gas|Gas Turbine
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  geothermal:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: +|Geothermal
+    inflow_suffix: +|Geothermal
+    lifetime_suffix: Geothermal
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  csp:
+    sector: power
+    hierarchy: leaf
+    stock_suffix: Solar|+|CSP
+    inflow_suffix: Solar|+|CSP
+    lifetime_suffix: Solar|CSP
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: [concentrating-solar-power]
+  passenger-ldv-4w:
+    sector: transport
+    hierarchy: aggregate
+    children: [passenger-ldv-4w-bev, passenger-ldv-4w-fcev, passenger-ldv-4w-gases, passenger-ldv-4w-hybrid, passenger-ldv-4w-liquids]
+    variable_suffix: Pass|Road|LDV|Four Wheelers
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 20
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: [cars]
+  passenger-ldv-2w:
+    sector: transport
+    hierarchy: leaf
+    variable_suffix: Pass|Road|LDV|Two Wheelers
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  passenger-ldv-3w:
+    sector: transport
+    hierarchy: leaf
+    variable_suffix: Pass|Road|LDV|Three Wheelers
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 8
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  buses:
+    sector: transport
+    hierarchy: aggregate
+    children: [buses-bev, buses-fcev, buses-gases, buses-liquids]
+    variable_suffix: Pass|Road|Bus
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  light-trucks:
+    sector: transport
+    hierarchy: aggregate
+    children: [light-trucks-bev, light-trucks-fcev, light-trucks-gases, light-trucks-liquids]
+    variable_suffix: Freight|Road|Light
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  heavy-trucks:
+    sector: transport
+    hierarchy: aggregate
+    children: [heavy-trucks-bev, heavy-trucks-fcev, heavy-trucks-gases, heavy-trucks-liquids]
+    variable_suffix: Freight|Road|Heavy
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  passenger-ldv-4w-bev:
+    sector: transport
+    hierarchy: leaf
+    parent: passenger-ldv-4w
+    variable_suffix: Pass|Road|LDV|Four Wheelers|BEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 20
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: [cars-bev]
+  passenger-ldv-4w-fcev:
+    sector: transport
+    hierarchy: leaf
+    parent: passenger-ldv-4w
+    variable_suffix: Pass|Road|LDV|Four Wheelers|FCEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 20
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: [cars-fcev]
+  passenger-ldv-4w-gases:
+    sector: transport
+    hierarchy: leaf
+    parent: passenger-ldv-4w
+    variable_suffix: Pass|Road|LDV|Four Wheelers|Gases
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 20
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: [cars-gases]
+  passenger-ldv-4w-hybrid:
+    sector: transport
+    hierarchy: leaf
+    parent: passenger-ldv-4w
+    variable_suffix: Pass|Road|LDV|Four Wheelers|Hybrid electric
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 20
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: [cars-hybrid]
+  passenger-ldv-4w-liquids:
+    sector: transport
+    hierarchy: leaf
+    parent: passenger-ldv-4w
+    variable_suffix: Pass|Road|LDV|Four Wheelers|Liquids
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 20
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: [cars-liquids]
+  buses-bev:
+    sector: transport
+    hierarchy: leaf
+    parent: buses
+    variable_suffix: Pass|Road|Bus|BEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  buses-fcev:
+    sector: transport
+    hierarchy: leaf
+    parent: buses
+    variable_suffix: Pass|Road|Bus|FCEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  buses-gases:
+    sector: transport
+    hierarchy: leaf
+    parent: buses
+    variable_suffix: Pass|Road|Bus|Gases
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  buses-liquids:
+    sector: transport
+    hierarchy: leaf
+    parent: buses
+    variable_suffix: Pass|Road|Bus|Liquids
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  light-trucks-bev:
+    sector: transport
+    hierarchy: leaf
+    parent: light-trucks
+    variable_suffix: Freight|Road|Light|BEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  light-trucks-fcev:
+    sector: transport
+    hierarchy: leaf
+    parent: light-trucks
+    variable_suffix: Freight|Road|Light|FCEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  light-trucks-gases:
+    sector: transport
+    hierarchy: leaf
+    parent: light-trucks
+    variable_suffix: Freight|Road|Light|Gases
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  light-trucks-liquids:
+    sector: transport
+    hierarchy: leaf
+    parent: light-trucks
+    variable_suffix: Freight|Road|Light|Liquids
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  heavy-trucks-bev:
+    sector: transport
+    hierarchy: leaf
+    parent: heavy-trucks
+    variable_suffix: Freight|Road|Heavy|BEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  heavy-trucks-fcev:
+    sector: transport
+    hierarchy: leaf
+    parent: heavy-trucks
+    variable_suffix: Freight|Road|Heavy|FCEV
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  heavy-trucks-gases:
+    sector: transport
+    hierarchy: leaf
+    parent: heavy-trucks
+    variable_suffix: Freight|Road|Heavy|Gases
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  heavy-trucks-liquids:
+    sector: transport
+    hierarchy: leaf
+    parent: heavy-trucks
+    variable_suffix: Freight|Road|Heavy|Liquids
+    stock_unit: million veh
+    inflow_unit: million veh
+    service_life: 15
+    capacity_basis: vehicles in use reported by REMIND
+    aliases: []
+  hydro:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|+|Hydro
+    inflow_variable: New Cap|Electricity|+|Hydro
+    lifetime_variable: Tech|Electricity|Hydro|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: [hydropower]
+  ccgt-ccs:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Gas|CC|+|w/ CC
+    inflow_variable: New Cap|Electricity|Gas|CC|+|w/ CC
+    lifetime_variable: Tech|Electricity|Gas|Combined Cycle w/ CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: [gas-combined-cycle-with-ccs]
+  gas-chp:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Gas|CHP
+    inflow_variable: New Cap|Electricity|Gas|CHP
+    lifetime_variable: Tech|Electricity|Gas|Combined Heat and Power w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  hydrogen-power:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|+|Hydrogen
+    inflow_variable: New Cap|Electricity|+|Hydrogen
+    lifetime_variable: Tech|Electricity|Hydrogen|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  oil-power:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Oil|w/o CC
+    inflow_variable: New Cap|Electricity|Oil|w/o CC
+    lifetime_variable: Tech|Electricity|Oil|DOT|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  coal-igcc-ccs:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Coal|IGCC|+|w/ CC
+    inflow_variable: New Cap|Electricity|Coal|IGCC|+|w/ CC
+    lifetime_variable: Tech|Electricity|Coal|Gasification Combined Cycle w/ CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  coal-igcc:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Coal|IGCC|+|w/o CC
+    inflow_variable: New Cap|Electricity|Coal|IGCC|+|w/o CC
+    lifetime_variable: Tech|Electricity|Coal|Gasification Combined Cycle w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  coal-chp:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Coal|CHP
+    inflow_variable: New Cap|Electricity|Coal|CHP
+    lifetime_variable: Tech|Electricity|Coal|Combined Heat and Power w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  biomass-chp:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Biomass|CHP
+    inflow_variable: New Cap|Electricity|Biomass|CHP
+    lifetime_variable: Tech|Electricity|Biomass|Combined Heat and Power w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  biomass-ccs:
+    sector: power
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Biomass|w/ CC
+    inflow_variable: New Cap|Electricity|Biomass|w/ CC
+    lifetime_variable: Tech|Electricity|Biomass|Gasification Combined Cycle w/ CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: electrical generating capacity reported by REMIND
+    aliases: []
+  battery-pv:
+    sector: storage
+    hierarchy: leaf
+    stock_variable: Cap|Electricity|Storage|Battery|For PV
+    inflow_variable: New Cap|Electricity|Storage|Battery|For PV
+    lifetime_variable: Tech|Electricity|Storage|Battery|For PV|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: battery power capacity coupled to solar PV reported by REMIND
+    aliases: []
+  hydrogen-electrolysis:
+    sector: hydrogen
+    hierarchy: leaf
+    stock_variable: Cap|Hydrogen|+|Electricity
+    inflow_variable: New Cap|Hydrogen|+|Electricity
+    lifetime_variable: Tech|Hydrogen|Electricity|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: hydrogen production capacity reported by REMIND
+    aliases: []
+  hydrogen-biomass-ccs:
+    sector: hydrogen
+    hierarchy: leaf
+    stock_variable: Cap|Hydrogen|Biomass|+|w/ CC
+    inflow_variable: New Cap|Hydrogen|Biomass|+|w/ CC
+    lifetime_variable: Tech|Hydrogen|Biomass|w/ CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: hydrogen production capacity reported by REMIND
+    aliases: []
+  hydrogen-biomass:
+    sector: hydrogen
+    hierarchy: leaf
+    stock_variable: Cap|Hydrogen|Biomass|+|w/o CC
+    inflow_variable: New Cap|Hydrogen|Biomass|+|w/o CC
+    lifetime_variable: Tech|Hydrogen|Biomass|w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: hydrogen production capacity reported by REMIND
+    aliases: []
+  hydrogen-coal-ccs:
+    sector: hydrogen
+    hierarchy: leaf
+    stock_variable: Cap|Hydrogen|Coal|+|w/ CC
+    inflow_variable: New Cap|Hydrogen|Coal|+|w/ CC
+    lifetime_variable: Tech|Hydrogen|Coal|w/ CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: hydrogen production capacity reported by REMIND
+    aliases: []
+  hydrogen-coal:
+    sector: hydrogen
+    hierarchy: leaf
+    stock_variable: Cap|Hydrogen|Coal|+|w/o CC
+    inflow_variable: New Cap|Hydrogen|Coal|+|w/o CC
+    lifetime_variable: Tech|Hydrogen|Coal|w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: hydrogen production capacity reported by REMIND
+    aliases: []
+  hydrogen-gas-ccs:
+    sector: hydrogen
+    hierarchy: leaf
+    stock_variable: Cap|Hydrogen|Gas|+|w/ CC
+    inflow_variable: New Cap|Hydrogen|Gas|+|w/ CC
+    lifetime_variable: Tech|Hydrogen|Gas|w/ CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: hydrogen production capacity reported by REMIND
+    aliases: []
+  hydrogen-gas:
+    sector: hydrogen
+    hierarchy: leaf
+    stock_variable: Cap|Hydrogen|Gas|+|w/o CC
+    inflow_variable: New Cap|Hydrogen|Gas|+|w/o CC
+    lifetime_variable: Tech|Hydrogen|Gas|w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: hydrogen production capacity reported by REMIND
+    aliases: []
+  heat-biomass:
+    sector: heat
+    hierarchy: leaf
+    stock_variable: Cap|Heat|+|Biomass
+    inflow_variable: New Cap|Heat|+|Biomass
+    lifetime_variable: Tech|Heat|Biomass|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: heat production capacity reported by REMIND
+    aliases: []
+  heat-coal:
+    sector: heat
+    hierarchy: leaf
+    stock_variable: Cap|Heat|+|Coal
+    inflow_variable: New Cap|Heat|+|Coal
+    lifetime_variable: Tech|Heat|Coal|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: heat production capacity reported by REMIND
+    aliases: []
+  heat-pump:
+    sector: heat
+    hierarchy: leaf
+    stock_variable: Cap|Heat|+|Electricity|Heat Pump
+    inflow_variable: New Cap|Heat|+|Electricity|Heat Pump
+    lifetime_variable: Tech|Heat|Electricity|Heat Pump|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: heat production capacity reported by REMIND
+    aliases: []
+  heat-gas:
+    sector: heat
+    hierarchy: leaf
+    stock_variable: Cap|Heat|+|Gas
+    inflow_variable: New Cap|Heat|+|Gas
+    lifetime_variable: Tech|Heat|Gas|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: heat production capacity reported by REMIND
+    aliases: []
+  gases-biomass:
+    sector: gases
+    hierarchy: leaf
+    stock_variable: Cap|Gases|+|Biomass
+    inflow_variable: New Cap|Gases|+|Biomass
+    lifetime_variable: Tech|Gases|Biomass|w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: gas production capacity reported by REMIND
+    aliases: []
+  gases-coal:
+    sector: gases
+    hierarchy: leaf
+    stock_variable: Cap|Gases|+|Coal
+    inflow_variable: New Cap|Gases|+|Coal
+    lifetime_variable: Tech|Gases|Fossil|Coal|w/o CC|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: gas production capacity reported by REMIND
+    aliases: []
+  gases-hydrogen:
+    sector: gases
+    hierarchy: leaf
+    stock_variable: Cap|Gases|+|Hydrogen
+    inflow_variable: New Cap|Gases|+|Hydrogen
+    lifetime_variable: Tech|Gases|Hydrogen|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: gas production capacity reported by REMIND
+    aliases: []
+  liquids-oil:
+    sector: liquids
+    hierarchy: leaf
+    stock_variable: Cap|Liquids|+|Oil
+    inflow_variable: New Cap|Liquids|+|Oil
+    lifetime_variable: Tech|Liquids|Fossil|Oil|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: liquid fuel production capacity reported by REMIND
+    aliases: []
+  liquids-hydrogen:
+    sector: liquids
+    hierarchy: leaf
+    stock_variable: Cap|Liquids|+|Hydrogen
+    inflow_variable: New Cap|Liquids|+|Hydrogen
+    lifetime_variable: Tech|Liquids|Hydrogen|Lifetime
+    stock_unit: GW
+    inflow_unit: GW/yr
+    capacity_basis: liquid fuel production capacity reported by REMIND
+    aliases: []
+  direct-air-capture:
+    sector: carbon_management
+    hierarchy: leaf
+    stock_variable: Cap|Carbon Management|DAC
+    inflow_variable: New Cap|Carbon Management|DAC
+    lifetime_variable: Tech|DAC|Lifetime
+    stock_unit: Mt CO2/yr
+    inflow_unit: Mt CO2/yr/yr
+    capacity_basis: annual direct-air-capture capacity reported by REMIND
+    aliases: [dac]
+excluded_capacity_variables:
+  Cap|Biochar:
+    status: ambiguous_lifetime
+    reason: one capacity series covers four biochar technologies with different lifetime variables
+  Cap|Electricity:
+    status: reporting_aggregate
+    reason: total electricity capacity overlaps mapped technology stocks
+  Cap|Electricity|+|Biomass:
+    status: reporting_aggregate
+    reason: biomass total overlaps technology-level electricity stocks
+  Cap|Electricity|+|Coal:
+    status: reporting_aggregate
+    reason: coal total overlaps technology-level electricity stocks
+  Cap|Electricity|+|Gas:
+    status: reporting_aggregate
+    reason: gas total overlaps technology-level electricity stocks
+  Cap|Electricity|+|Oil:
+    status: reporting_aggregate
+    reason: oil total overlaps the mapped oil electricity stock
+  Cap|Electricity|+|Solar:
+    status: reporting_aggregate
+    reason: solar total overlaps PV and CSP stocks
+  Cap|Electricity|+|Wind:
+    status: reporting_aggregate
+    reason: wind total overlaps onshore and offshore stocks
+  Cap|Electricity|Biomass|w/o CC:
+    status: ambiguous_lifetime
+    reason: capacity can include CHP and gasification technologies with different lifetimes
+  Cap|Electricity|CHP:
+    status: reporting_aggregate
+    reason: CHP total overlaps fuel-specific CHP stocks
+  Cap|Electricity|Coal|+|w/ CC:
+    status: reporting_aggregate
+    reason: coal CCS total overlaps technology-level coal stocks
+  Cap|Electricity|Coal|+|w/o CC:
+    status: reporting_aggregate
+    reason: coal non-CCS total overlaps technology-level coal stocks
+  Cap|Electricity|Gas|+|w/ CC:
+    status: reporting_aggregate
+    reason: gas CCS total overlaps the mapped combined-cycle CCS stock
+  Cap|Electricity|Gas|+|w/o CC:
+    status: reporting_aggregate
+    reason: gas non-CCS total overlaps combined-cycle, turbine, and CHP stocks
+  Cap|Electricity|Non-Biomass Renewables:
+    status: reporting_aggregate
+    reason: renewable total overlaps hydro, solar, wind, and geothermal stocks
+  Cap|Electricity|Storage|Battery:
+    status: reporting_aggregate
+    reason: battery total overlaps application-specific battery stocks
+  Cap|Electricity|Storage|Battery|For Wind:
+    status: ambiguous_lifetime
+    reason: one capacity series has separate onshore and offshore wind battery lifetimes
+  Cap|Gases:
+    status: reporting_aggregate
+    reason: total gas production capacity overlaps feedstock-level stocks
+  Cap|Gases|+|Natural Gas:
+    status: missing_lifetime
+    reason: no matching REMIND technology lifetime variable is disclosed
+  Cap|Heat:
+    status: reporting_aggregate
+    reason: total heat capacity overlaps technology-level heat stocks
+  Cap|Heat|+|Solar:
+    status: missing_lifetime
+    reason: no matching REMIND technology lifetime variable is disclosed
+  Cap|Hydrogen:
+    status: reporting_aggregate
+    reason: total hydrogen capacity overlaps technology-level hydrogen stocks
+  Cap|Hydrogen|+|Biomass:
+    status: reporting_aggregate
+    reason: biomass hydrogen total overlaps CCS and non-CCS stocks
+  Cap|Hydrogen|+|Coal:
+    status: reporting_aggregate
+    reason: coal hydrogen total overlaps CCS and non-CCS stocks
+  Cap|Hydrogen|+|Gas:
+    status: reporting_aggregate
+    reason: gas hydrogen total overlaps CCS and non-CCS stocks
+  Cap|Hydrogen|Fossil:
+    status: reporting_aggregate
+    reason: fossil hydrogen total overlaps coal and gas stocks
+  Cap|Hydrogen|Fossil|+|w/ CC:
+    status: reporting_aggregate
+    reason: fossil hydrogen CCS total overlaps coal and gas CCS stocks
+  Cap|Hydrogen|Fossil|+|w/o CC:
+    status: reporting_aggregate
+    reason: fossil hydrogen non-CCS total overlaps coal and gas stocks
+  Cap|Liquids:
+    status: reporting_aggregate
+    reason: total liquids capacity overlaps feedstock-level stocks
+  Cap|Liquids|+|Biomass:
+    status: ambiguous_lifetime
+    reason: one capacity series covers several biofuel technologies with different lifetimes
+  Cap|Liquids|+|Coal:
+    status: ambiguous_lifetime
+    reason: one capacity series covers CCS and non-CCS coal liquids with different lifetimes
+  Cap|Liquids|+|Gas:
+    status: missing_lifetime
+    reason: no matching REMIND technology lifetime variable is disclosed
+  Cap|Liquids|Fossil:
+    status: reporting_aggregate
+    reason: fossil liquids total overlaps coal, gas, and oil stocks
+  Cap|Solids:
+    status: reporting_aggregate
+    reason: total solids capacity overlaps feedstock-level stocks
+  Cap|Solids|+|Biomass:
+    status: missing_lifetime
+    reason: no matching REMIND technology lifetime variable is disclosed
+  Cap|Solids|+|Coal:
+    status: missing_lifetime
+    reason: no matching REMIND technology lifetime variable is disclosed

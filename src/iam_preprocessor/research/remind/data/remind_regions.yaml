@@ -1,0 +1,15 @@
+schema_version: 1
+mapping: REMIND 21_EU11
+source:
+  url: https://github.com/remindmodel/remind/blob/develop/config/regionmapping_21_EU11.csv
+  reviewed: 2026-10-27
+regions:
+  DEU:
+    countries: [DEU]
+    evidence_coverage: exact
+  FRA:
+    countries: [FRA]
+    evidence_coverage: exact
+  UKI:
+    countries: [GBR, IRL]
+    evidence_coverage: exact

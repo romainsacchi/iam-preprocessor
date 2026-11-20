@@ -1,0 +1,17 @@
+final_energy_prefix: "Final Energy|"
+transport_energy_prefix: "Final Energy|Transportation|"
+transport_service_prefix: "Energy Service|Transportation|"
+global_region: World
+service_units:
+  Passenger: billion pkm/yr
+  Freight: billion tkm/yr
+bev_trucks:
+  classes: [Medium Truck, Heavy Truck]
+  service_category: Freight
+  plug_in_ranges: [10km, 30km, 60km]
+  plug_in_fuels: [Biofuel, Oil]
+  total_electricity: "Final Energy|Transportation|Freight|{truck}|Electricity"
+  electricity: "Final Energy|Transportation|Freight|{truck}|Battery Electric|Electricity"
+  service: "Energy Service|Transportation|Freight|{truck}|Battery Electric"
+  plug_in_service: "Energy Service|Transportation|Freight|{truck}|Plug-in electric vehicle {distance}|{fuel}"
+  plug_in_efficiency: "Efficiency|Transportation|Freight|{truck}|Plug-in electric vehicle {distance}|Electricity"

@@ -1,0 +1,11 @@
+cement:
+  capture_prefix: Carbon Management|Carbon Capture|Industrial Processes|Industry|+|Cement
+  emissions_prefix: Emi|CO2|Industrial Processes|Industry|+|Cement
+  ccs_output:
+    Production|Industry|Cement: Production|Industry|Cement w CCS
+    FE|Industry|+++|Cement: FE|Industry|+++|Cement w CCS
+
+regions:
+  exclude: [EU27]
+  exclude_by_filename:
+    EU21: [EUR, NEU]

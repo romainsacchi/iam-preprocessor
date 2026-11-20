@@ -1,0 +1,12 @@
+region_label_fragment: R12_
+exclude_regions: [GLB]
+global_regions: [World, R12_GLB, GLB]
+dri_variables:
+  finished_steel: Production|Iron and Steel|Steel|Primary|EAF|Sponge Iron
+  hydrogen_sponge_iron: Production|Iron and Steel|Sponge Iron|Hydrogen
+  gas_ccs_sponge_iron: Production|Iron and Steel|Sponge Iron|Gas|w/ CCS
+  coal_sponge_iron: Production|Iron and Steel|Sponge Iron|Coal|w/o CCS
+  gas_sponge_iron: Production|Iron and Steel|Sponge Iron|Gas|w/o CCS
+  hydrogen_finished_steel: Production|Industry|Iron and Steel|H-DRI/EAF
+  gas_finished_steel: Production|Industry|Iron and Steel|NG-DRI/EAF
+  gas_ccs_finished_steel: Production|Industry|Iron and Steel|NG-DRI/EAF + CCS

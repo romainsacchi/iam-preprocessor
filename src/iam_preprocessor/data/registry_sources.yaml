@@ -1,0 +1,7 @@
+bundles:
+  - asset_mapping:
+      file: research/remind/data/remind_stock_mappings.yaml
+      metadata: [schema_version]
+    region_crosswalk:
+      file: research/remind/data/remind_regions.yaml
+      metadata: [schema_version, mapping]
