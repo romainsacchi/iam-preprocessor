@@ -19,3 +19,8 @@ observations. The export script also needs the corresponding version of `premise
   reproduce the later evidence campaign.
 - `export_sector_runtime_fixture.py` uses the archived CSV outputs to repeat the earlier premise trial.
 - `plot_joint_annualisation.py` produces plots for the original pilot outputs.
+- `build_remind_vehicle_opening_evidence.py` prepares starting ages for vehicles
+  from UK registration data.
+- `build_remind_jrc_vehicle_stock_run.py` prepares a 2005 starting-stock example
+  using JRC-IDEES vehicle data. `report_remind_jrc_vehicle_stock_run.py` plots
+  the results alongside an earlier run.
