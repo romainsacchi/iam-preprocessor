@@ -1,4 +1,4 @@
-"""Independently validate serialized stock enrichment against its source/report."""
+"""Compare saved stock vintage results with their source and run report."""
 
 import argparse
 import json
@@ -105,6 +105,8 @@ def validate_long_parquet(report, report_path, original):
                 .to_numpy(float)
             )
             expected_share_sum = (totals > 0).astype(float)
+            if metric == "service_share":
+                expected_share_sum[np.isin(years, asset["zero_service_years"])] = 0
             np.testing.assert_allclose(values.sum(axis=1), expected_share_sum, rtol=0, atol=1e-10)
             if metric == "stock_share":
                 np.testing.assert_allclose(values * totals[:, None], stocks, rtol=1e-10, atol=1e-12)
@@ -129,21 +131,22 @@ def validate_long_parquet(report, report_path, original):
         source_region = original.loc[original.Region.eq(asset["region"])].set_index("Variable")
         stock_source = source_region.loc[config["stock"]["variable"]]
         for year, actual in zip(years, totals, strict=True):
-            if year in source_years:
+            if config["mode"] != "inflow" and year in source_years:
                 np.testing.assert_allclose(
                     actual, stock_source[str(year)], rtol=0, atol=1e-9 * scale
                 )
 
         joint = asset.get("annualisation")
         if joint is not None:
+            fitted_additions = np.asarray(joint["annual_inflows"])
             np.testing.assert_allclose(
-                additions[1:], joint["annual_inflows"][: len(years) - 1], rtol=1e-12, atol=1e-12
+                additions[1:], fitted_additions[: len(years) - 1], rtol=1e-12, atol=1e-12
             )
             flow_source = source_region.loc[config["inflow"]["variable"]]
             fit_years = np.asarray(joint["solve_years"][1:])
             for constraint in joint["flow_constraints"]:
                 target = float(flow_source[str(constraint["anchor"])])
-                actual = float(additions[1:][np.isin(fit_years, constraint["years"])].mean())
+                actual = float(fitted_additions[np.isin(fit_years, constraint["years"])].mean())
                 np.testing.assert_allclose(constraint["target_rate"], target, rtol=1e-12)
                 np.testing.assert_allclose(constraint["reconstructed_rate"], actual, rtol=1e-12)
                 np.testing.assert_allclose(constraint["rate_residual"], actual - target, atol=1e-10)
@@ -172,7 +175,7 @@ def validate_long_parquet(report, report_path, original):
             for index, year in enumerate(years):
                 age = np.maximum(0, year - cohorts)
                 initial_age = np.maximum(0, reference_year - cohorts)
-                if law["distribution"] == "weibull":
+                if distribution == "weibull":
                     scale_lifetime = lifetimes / gamma(1 + 1 / law["shape"])
                     surviving = np.exp(
                         -(

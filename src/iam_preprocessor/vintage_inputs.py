@@ -107,23 +107,3 @@ def read_initial_cohorts(initial, reference_year):
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise DataValidationError(f"Invalid cohort observations: {initial['file']}: {exc}") from exc
     return observed, int(cohorts.min())
-
-
-def annualize_source_table(frame, added_years):
-    """Add annual columns to the source table without changing native anchors."""
-    anchors = list(map(int, year_columns(frame)))
-    additions = {}
-    for year in added_years:
-        if str(year) in frame.columns:
-            continue
-        # Always interpolate between years supplied by the IAM.
-        lo, hi = max(y for y in anchors if y < year), min(y for y in anchors if y > year)
-        try:
-            lower = pd.to_numeric(frame[str(lo)], errors="raise")
-            upper = pd.to_numeric(frame[str(hi)], errors="raise")
-        except (TypeError, ValueError) as exc:
-            raise DataValidationError(
-                "Cannot interpolate non-numeric original IAM variables."
-            ) from exc
-        additions[str(year)] = lower + (upper - lower) * (year - lo) / (hi - lo)
-    return pd.concat([frame, pd.DataFrame(additions, index=frame.index)], axis=1)

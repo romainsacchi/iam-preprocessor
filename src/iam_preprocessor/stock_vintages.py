@@ -1,8 +1,8 @@
 """Orchestrate stock-vintage reconstruction and write its public outputs.
 
 Input interpretation lives in :mod:`vintage_inputs`; reconstruction of one
-asset lives in :mod:`vintage_reconstruction`.  This module assembles their
-results into the IAM-style compatibility table and the canonical data package.
+asset lives in :mod:`vintage_reconstruction`.  This module saves their
+results in a separate data package.
 """
 
 from __future__ import annotations
@@ -14,91 +14,49 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .crypto import encrypt_file
 from .exceptions import DataValidationError, IamPreprocessorError
-from .filtering import filter_variables
-from .io import read_frame, sha256_file, validate_frame, write_csv_atomic, year_columns
+from .io import read_frame, sha256_file, validate_frame
 from .report import ProcessingReport
 from .stock_config import load_stock_config
-from .stock_package import write_vintage_package
-from .variable_maps import variable_map, vintage_suffix
-from .vintage_inputs import (
-    annual_additions,
-    annualize_source_table,
-    interpolate_annual,
-    read_iam_series,
-    read_initial_cohorts,
-)
+from .stock_package import COLUMNS, SCHEMA_VERSION, write_vintage_package
+from .variable_maps import variable_map
 from .vintage_reconstruction import reconstruct_asset
 
 VINTAGE_OUTPUT = variable_map("vintage_output_variables.yaml")
 PREFIX = VINTAGE_OUTPUT["prefix"]
 
-# Compatibility names retained for existing notebooks and downstream imports.
-_series = read_iam_series
-interpolate = interpolate_annual
-annual_inflows = annual_additions
-_observations = read_initial_cohorts
-_annualize_originals = annualize_source_table
 
-
-def _asset_result(frame, asset, reference_year, end_year):
-    """Compatibility wrapper for the former tuple-returning private helper."""
-    return reconstruct_asset(frame, asset, reference_year, end_year).as_legacy_tuple()
-
-
-def enrich_stock_vintages(frame, config, *, return_v2=False, include_v1=True):
-    """Return an enriched table and diagnostics using a validated stock configuration.
-
-    The input contains one model and scenario. Set ``return_v2`` to also receive
-    the long table, with one value per asset, region, year, cohort and metric.
-    Set ``include_v1=False`` to return the source table without added IAM rows.
-    """
+def calculate_stock_vintages(frame, config):
+    """Return a table of annual vintage results and diagnostics for each asset."""
     validate_frame(frame)
     identity = frame[["Model", "Scenario"]].drop_duplicates().values.tolist()
     if identity != [[config["model"], config["scenario"]]]:
         raise DataValidationError("Input must contain exactly the configured model and scenario.")
     if frame["Variable"].str.startswith(VINTAGE_OUTPUT["namespace"]).any():
         raise DataValidationError("Input already contains stock-vintage enrichment.")
+
     ref, end = config["reference_year"], config["end_year"]
-    rows, diagnostics, v2_rows = [], [], []
+    rows, diagnostics = [], []
     for asset in config["assets"]:
         try:
             reconstruction = reconstruct_asset(frame, asset, ref, end)
         except DataValidationError as exc:
             raise DataValidationError(f"{asset['id']}/{asset['region']}: {exc}") from exc
-        _append_asset_rows(config, asset, reconstruction, rows, v2_rows, include_v1)
+        _append_asset_rows(config, asset, reconstruction, rows)
         diagnostics.append(_asset_diagnostics(asset, reconstruction))
-    if include_v1:
-        # Fill the extra year columns on the original rows before appending the new ones.
-        annual = _annualize_originals(frame, range(ref, end + 1))
-        enriched = pd.concat([annual, pd.DataFrame(rows)], ignore_index=True)
-        enriched = enriched[
-            [c for c in enriched.columns if c not in year_columns(enriched)]
-            + year_columns(enriched)
-        ]
-    else:
-        enriched = frame
-    validate_frame(enriched)
-    if return_v2:
-        return enriched, diagnostics, pd.DataFrame(v2_rows)
-    return enriched, diagnostics
+    return pd.DataFrame(rows, columns=COLUMNS), diagnostics
 
 
-def _append_asset_rows(config, asset, reconstruction, rows, v2_rows, include_v1):
-    """Write one asset's results into the IAM table and the long-format package."""
+def _append_asset_rows(config, asset, reconstruction, rows):
+    """Add the results for one asset and region to the vintage table."""
     result = reconstruction.cohorts
     shares = reconstruction.stock_shares
     service_shares = reconstruction.service_shares
-    targets = reconstruction.stock_targets
-    flows = reconstruction.reported_additions
-    implied = reconstruction.implied_exit
     service_target = reconstruction.service_target
     basis_by_cohort = reconstruction.evidence_basis
-    prefix = PREFIX + asset["id"] + "|"
     stock_unit = asset["stock"]["unit"]
 
-    def add_v2(
+    def add(
         year,
         cohort,
         metric,
@@ -109,7 +67,7 @@ def _append_asset_rows(config, asset, reconstruction, rows, v2_rows, include_v1)
         """Store only positive quantities in the long-format package."""
         if not np.isfinite(value) or value <= 0:
             return
-        v2_rows.append(
+        rows.append(
             {
                 "model": config["model"],
                 "scenario": config["scenario"],
@@ -124,21 +82,6 @@ def _append_asset_rows(config, asset, reconstruction, rows, v2_rows, include_v1)
             }
         )
 
-    def add(suffix, unit, values):
-        """Store one IAM-style row with a column for each year."""
-        if not include_v1:
-            return
-        rows.append(
-            {
-                "Model": config["model"],
-                "Scenario": config["scenario"],
-                "Region": asset["region"],
-                "Variable": prefix + suffix,
-                "Unit": unit,
-                **{str(y): float(v) for y, v in zip(result.years, values, strict=True)},
-            }
-        )
-
     for j, cohort in enumerate(result.cohorts):
         metrics = [
             ("stock", stock_unit, result.stock[:, j]),
@@ -150,16 +93,13 @@ def _append_asset_rows(config, asset, reconstruction, rows, v2_rows, include_v1)
                 ("service", asset["service"]["unit"], service_shares[:, j] * service_target)
             )
 
-        # The IAM table includes explicit zeros for cohorts outside their years of use.
-        for metric, unit, values in metrics:
-            add(vintage_suffix(metric, cohort), unit, values)
         for i, year in enumerate(result.years):
             basis = basis_by_cohort[j]
             for metric, unit, values in metrics:
-                add_v2(year, cohort, metric, values[i], unit, cohort_basis=basis)
+                add(year, cohort, metric, values[i], unit, cohort_basis=basis)
             # Retirements describe changes after the opening year.
             if i and result.natural_exit_by_cohort is not None:
-                add_v2(
+                add(
                     year,
                     cohort,
                     "retirement_natural",
@@ -168,7 +108,7 @@ def _append_asset_rows(config, asset, reconstruction, rows, v2_rows, include_v1)
                     cohort_basis=basis,
                 )
             if i and result.additional_exit_by_cohort is not None:
-                add_v2(
+                add(
                     year,
                     cohort,
                     "retirement_additional",
@@ -178,22 +118,7 @@ def _append_asset_rows(config, asset, reconstruction, rows, v2_rows, include_v1)
                 )
     # Only one build year receives additions in any given calendar year.
     for i, year in enumerate(result.years[1:], start=1):
-        add_v2(year, year, "addition", result.inflow[i], stock_unit + "/yr")
-    totals = result.stock.sum(axis=1)
-    add(vintage_suffix("coverage"), "1", np.ones(len(result.years)))
-    add(vintage_suffix("stock"), stock_unit, totals)
-    for name, values in (
-        ("inflow", result.inflow),
-        ("natural_exit", result.natural_exit),
-        ("additional_exit", result.additional_exit),
-        ("balance", result.balance),
-        ("inflow_residual", result.inflow - flows),
-        ("implied_exit", implied),
-    ):
-        add(vintage_suffix(name), stock_unit + "/yr", values)
-    add(vintage_suffix("stock_residual"), stock_unit, totals - targets)
-    if service_target is not None:
-        add(vintage_suffix("service"), asset["service"]["unit"], service_target)
+        add(year, year, "addition", result.inflow[i], stock_unit + "/yr")
 
 
 def _asset_diagnostics(asset, reconstruction):
@@ -247,45 +172,21 @@ def _asset_diagnostics(asset, reconstruction):
     return diagnostic
 
 
-def prepare_stock_vintages(
-    source,
-    output_dir,
-    config_path,
-    *,
-    filter_output=False,
-    encrypt_to=None,
-    key_file=None,
-    package_only=False,
-    overwrite=False,
-):
-    """Write enriched CSV and hashed report, optionally filtering and encrypting.
-
-    Run on a single unencrypted IAM file. Subsequent encryption uses the existing
-    premise-compatible interface. Generated scenarios remain local/private.
-    """
+def prepare_stock_vintages(source, output_dir, config_path, *, overwrite=False):
+    """Write a separate stock-vintage package and report for one scenario file."""
     source, output_dir = Path(source), Path(output_dir)
     config = load_stock_config(config_path)
-    destination = output_dir / f"{source.stem}_stock_vintages.csv"
     package_path = output_dir / f"{source.stem}_stock_vintages_v2"
     report_path = output_dir / f"{source.stem}_stock_vintages_report.json"
-    if package_only and (filter_output or encrypt_to is not None):
+    package_root = package_path.resolve()
+    if any(Path(path).resolve().is_relative_to(package_root) for path in (source, config_path)):
         raise IamPreprocessorError(
-            "Package-only output cannot be filtered or encrypted as a v1 IAM CSV."
+            "The vintage package cannot contain the input scenario or settings."
         )
-    # Check all destinations together before reading the scenario or running the model.
-    paths = [report_path, package_path]
-    if not package_only:
-        paths.append(destination)
-    if encrypt_to is not None:
-        paths.append(Path(encrypt_to) / destination.name)
-    if len({p.resolve() for p in paths}) != len(paths):
-        raise IamPreprocessorError("Plain and encrypted destinations must differ.")
-    if not overwrite and any(p.exists() for p in paths):
+    if not overwrite and any(path.exists() for path in (report_path, package_path)):
         raise IamPreprocessorError("Output already exists; use --overwrite to replace it.")
     frame = read_frame(source)
-    enriched, diagnostics, v2 = enrich_stock_vintages(
-        frame, config, return_v2=True, include_v1=not package_only
-    )
+    vintages, diagnostics = calculate_stock_vintages(frame, config)
     # Record the library revision and input hashes so the run can be reproduced.
     flodym = distribution("flodym")
     flodym_origin = json.loads(flodym.read_text("direct_url.json") or "{}")
@@ -294,11 +195,8 @@ def prepare_stock_vintages(
         input_path=str(source.resolve()),
         input_sha256=sha256_file(source),
         input_rows=len(frame),
-        derived_variables=sorted(set(enriched["Variable"]) - set(frame["Variable"])),
         assumptions={
-            "stock_vintage_schema_version": 1,
-            "canonical_stock_vintage_schema_version": 2,
-            "v1_compatibility_output": not package_only,
+            "stock_vintage_schema_version": SCHEMA_VERSION,
             "origin": "reconstructed_not_native",
             "scenario": config["scenario"],
             "reference_year": config["reference_year"],
@@ -323,19 +221,17 @@ def prepare_stock_vintages(
                     "stock_usage.py",
                     "stock_annualisation.py",
                     "io.py",
-                    "filtering.py",
                     "variable_maps.py",
                 )
             },
             "variable_mapping_sha256": {
                 name: sha256_file(Path(__file__).with_name("data") / name)
-                for name in ("vintage_output_variables.yaml", "variable_filters.yaml")
+                for name in ("vintage_output_variables.yaml",)
             },
             "assets": diagnostics,
             "stock_timing": "end_of_year",
             "entry_timing": "end_of_year",
             "service_timing": "end_year_serving_stock_proxy_with_explicit_new_cohort_exposure",
-            "original_added_columns": "linear_between_existing_anchors_no_extrapolation",
             "allocation_basis": "common_amortisation",
             "exchange_amount_changed": False,
             "service_target_effect": "total_only_does_not_identify_relative_cohort_use",
@@ -361,37 +257,22 @@ def prepare_stock_vintages(
                 f"{d['asset']}/{d['region']}: additional exits follow the configured "
                 f"{d['configuration']['exit_policy']} policy. Physical disposal is unobserved."
             )
-    # Filtering applies to the IAM-style CSV. The long table keeps all reconstructed assets.
-    if filter_output:
-        enriched = filter_variables(enriched)
     write_vintage_package(
-        v2,
+        vintages,
         package_path,
         source_path=source,
         config_path=config_path,
         config=config,
         diagnostics=diagnostics,
         overwrite=overwrite,
-        csv_copy=not package_only,
     )
     report.assumptions["vintage_package_path"] = str(package_path.resolve())
     report.assumptions["vintage_package_manifest_sha256"] = sha256_file(
         package_path / "datapackage.json"
     )
-    if package_only:
-        canonical = package_path / "vintages.parquet"
-        report.output_path = str(canonical.resolve())
-        report.output_sha256 = sha256_file(canonical)
-        report.output_rows = len(v2)
-    else:
-        write_csv_atomic(enriched, destination, overwrite=overwrite)
-        report.output_path = str(destination.resolve())
-        report.output_sha256 = sha256_file(destination)
-        report.output_rows = len(enriched)
-        if encrypt_to is not None:
-            encrypted = Path(encrypt_to) / destination.name
-            encrypt_file(destination, encrypted, key_file=key_file, overwrite=overwrite)
-            report.encrypted_output_path = str(encrypted.resolve())
-            report.encrypted_output_sha256 = sha256_file(encrypted)
+    parquet = package_path / "vintages.parquet"
+    report.output_path = str(parquet.resolve())
+    report.output_sha256 = sha256_file(parquet)
+    report.output_rows = len(vintages)
     report.write(report_path, overwrite=overwrite)
     return report

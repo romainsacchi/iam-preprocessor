@@ -169,7 +169,6 @@ def write_vintage_package(
     config,
     diagnostics,
     overwrite=False,
-    csv_copy=True,
 ):
     """Atomically write a checksum-bound Parquet package and validation report."""
     table = table[COLUMNS].copy()
@@ -192,17 +191,6 @@ def write_vintage_package(
                 "rows": len(table),
             }
         ]
-        if csv_copy:
-            csv = temporary / "vintages.csv.gz"
-            table.to_csv(csv, index=False, compression="gzip")
-            resources.append(
-                {
-                    "path": csv.name,
-                    "format": "csv.gz",
-                    "sha256": sha256_file(csv),
-                    "rows": len(table),
-                }
-            )
         validation = temporary / "validation.json"
         _json(validation, validation_contract(diagnostics))
         resources.append(

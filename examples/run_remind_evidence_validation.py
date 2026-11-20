@@ -550,36 +550,91 @@ def configure(files, baseline, output, decisions, curves):
 
 
 def compare_baseline(files, report, output):
-    """Compare the reconstructed results with those of the baseline run."""
+    """Compare the Parquet results with the archived CSV baseline."""
     old = read_frame(files["baseline_output"])
-    new = read_frame(report.output_path)
-    keys = ["Model", "Scenario", "Region", "Variable", "Unit"]
-    a = old.set_index(keys)
-    b = new.set_index(keys)
-    columns = [c for c in a if c.isdigit()]
-    # Every old stock, flow and total service remains identical; only cohort service
-    # weights for explicitly promoted primary defaults can change.
-    decisions = json.loads((output / "service-decisions.json").read_text())
-    promotions = [d["asset"] for d in decisions if d["decision"] == "promote_generation_service"]
-    variables = a.index.get_level_values("Variable")
-    allowed = np.zeros(len(a), dtype=bool)
-    for asset in promotions:
-        for metric in ("service", "service_share"):
-            allowed |= variables.str.startswith(PREFIX + asset + "|" + vintage_suffix(metric, ""))
-    ids = a.index[~allowed]
+    original = read_frame(report.input_path)
+    source_keys = ["Model", "Scenario", "Region", "Variable", "Unit"]
+    source = original.set_index(source_keys)
     np.testing.assert_allclose(
-        a.loc[ids, columns], b.loc[ids, columns], rtol=1e-12, atol=1e-12, equal_nan=True
+        old.set_index(source_keys).loc[source.index, source.columns],
+        source,
+        rtol=1e-12,
+        atol=1e-12,
+        equal_nan=True,
     )
+
+    baseline = json.loads(files["baseline_report"].read_text())["assumptions"]
+    years = range(baseline["reference_year"], baseline["end_year"] + 1)
+    old = old.loc[old.Variable.str.startswith(PREFIX)].rename(columns={"Region": "region"})
+    names = old.Variable.str.removeprefix(PREFIX).str.split("|", n=3, expand=True)
+    old["asset"] = names[0]
+    old["cohort_year"] = pd.to_numeric(names[3], errors="coerce")
+    field = names[1]
+    new = pd.read_parquet(report.output_path)
+    keys = ["region", "asset", "metric", "year"]
+    cases = pd.MultiIndex.from_frame(old[["region", "asset"]].drop_duplicates())
+    new = new.loc[pd.MultiIndex.from_frame(new[["region", "asset"]]).isin(cases)]
+    new = new.loc[new.year.isin(years)]
+
+    decisions = json.loads((output / "service-decisions.json").read_text())
+    promotions = {d["asset"] for d in decisions if d["decision"] == "promote_generation_service"}
+
+    def compare(old_rows, new_rows, index):
+        """Compare the archived rows with the corresponding Parquet quantities."""
+        expected = old_rows.melt(
+            id_vars=[key for key in index if key != "year"],
+            value_vars=list(map(str, years)),
+            var_name="year",
+            value_name="value",
+        ).dropna(subset=["value"])
+        expected["year"] = expected["year"].astype(int)
+        expected = expected.set_index(index)["value"]
+        actual = new_rows.groupby(index)["value"].sum()
+        all_rows = expected.index.union(actual.index)
+        np.testing.assert_allclose(
+            expected.reindex(all_rows, fill_value=0),
+            actual.reindex(all_rows, fill_value=0),
+            rtol=1e-12,
+            atol=1e-12,
+        )
+        return len(all_rows)
+
+    cohort_metrics = {
+        vintage_suffix(metric, "").split("|")[0]: metric
+        for metric in ("stock", "stock_share", "service", "service_share")
+    }
+    old["metric"] = field.map(cohort_metrics)
+    old_cohorts = old.loc[old["cohort_year"].notna() & old["metric"].notna()]
+    new_cohorts = new.loc[new.metric.isin(cohort_metrics.values())]
+    service_metrics = ("service", "service_share")
+    old_cohorts = old_cohorts.loc[
+        ~(old_cohorts.asset.isin(promotions) & old_cohorts.metric.isin(service_metrics))
+    ]
+    new_cohorts = new_cohorts.loc[
+        ~(new_cohorts.asset.isin(promotions) & new_cohorts.metric.isin(service_metrics))
+    ]
+    cohort_count = compare(old_cohorts, new_cohorts, [*keys, "cohort_year"])
+
+    total_metrics = {
+        vintage_suffix("stock"): "stock",
+        vintage_suffix("inflow"): "addition",
+        vintage_suffix("natural_exit"): "retirement_natural",
+        vintage_suffix("additional_exit"): "retirement_additional",
+        vintage_suffix("service"): "service",
+    }
+    old["metric"] = field.map(total_metrics)
+    old_totals = old.loc[old["cohort_year"].isna() & old["metric"].notna()]
+    total_count = compare(old_totals, new.loc[new.metric.isin(total_metrics.values())], keys)
     save(
         output / "baseline-invariance.json",
         dict(
             passed=True,
-            rows_checked=len(ids),
-            values_checked=len(ids) * len(columns),
+            source_rows_checked=len(source),
+            cohort_values_checked=cohort_count,
+            annual_totals_checked=total_count,
             rule=(
-                "Native scenario rows, all existing stock distributions/flows and "
-                "total service unchanged. Cohort service is allowed to change only "
-                "for declared promotions."
+                "Compare the reported IAM values, vintage stocks, shares, and annual totals. "
+                "Service by build year may change for the selected generation-based cases."
             ),
         ),
     )
@@ -607,7 +662,7 @@ def main():
         raise ValueError("Baseline configuration changed")
     config = configure(files, args.baseline, out, decisions, curves)
     report = prepare_stock_vintages(files["scenario"], out, config, overwrite=True)
-    validate(out / (Path(report.output_path).stem + "_report.json"))
+    validate(out / f"{Path(files['scenario']).stem}_stock_vintages_report.json")
     compare_baseline(files, report, out)
     save(
         out / "campaign-provenance.json",

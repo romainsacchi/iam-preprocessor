@@ -13,10 +13,6 @@ import pandas as pd
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.lines import Line2D
 
-from iam_preprocessor.io import read_frame
-from iam_preprocessor.stock_vintages import PREFIX
-from iam_preprocessor.variable_maps import vintage_suffix
-
 ASSETS = {
     "passenger-bev": "Passenger BEVs",
     "heavy-trucks": "Heavy trucks",
@@ -29,10 +25,9 @@ def plot(report_path):
     """Plot the annual reconstruction and the original IAM time points."""
     report = json.loads(report_path.read_text())
     output = report_path.parent
-    frame = read_frame(report["output_path"]).set_index(["Region", "Variable"])
+    frame = pd.read_parquet(report["output_path"])
     metadata = report["assumptions"]
     years = np.arange(metadata["reference_year"], metadata["end_year"] + 1)
-    labels = list(map(str, years))
     diagnostics = {a["asset"]: a for a in metadata["assets"]}
     summary = []
     curves = []
@@ -42,14 +37,12 @@ def plot(report_path):
         for (asset, title), pair in zip(ASSETS.items(), axes, strict=True):
             diag = diagnostics[asset]
             joint = diag["annualisation"]
-            region = frame.loc[diag["region"]]
+            region = frame.loc[frame.region.eq(diag["region"])]
             unit = diag["configuration"]["stock"]["unit"]
-            for metric, ax in zip(("stock", "inflow"), pair, strict=True):
-                family = vintage_suffix(metric)
-                current = region.loc[PREFIX + asset + "|" + family, labels].to_numpy(float)
-                baseline = region.loc[PREFIX + asset + "-linear-stock|" + family, labels].to_numpy(
-                    float
-                )
+            for metric, ax in zip(("stock", "addition"), pair, strict=True):
+                family = "Stock" if metric == "stock" else "Inflow"
+                current = annual_amounts(region, asset, metric, years)
+                baseline = annual_amounts(region, asset + "-linear-stock", metric, years)
                 ax.plot(
                     years, baseline, color="0.5", ls="--", lw=1.4, label="Linear-stock baseline"
                 )
@@ -85,11 +78,11 @@ def plot(report_path):
                                 label=label,
                             )
                     for suffix, linestyle in (("low", ":"), ("high", "-.")):
-                        variable = PREFIX + asset + "-inflow-penalty-" + suffix + "|" + family
-                        if variable in region.index:
+                        case = asset + "-inflow-penalty-" + suffix
+                        if case in diagnostics:
                             ax.plot(
                                 years,
-                                region.loc[variable, labels].to_numpy(float),
+                                annual_amounts(region, case, metric, years),
                                 color="#278643",
                                 lw=1,
                                 ls=linestyle,
@@ -134,23 +127,23 @@ def plot(report_path):
         plt.close(fig)
         fig, axes = plt.subplots(2, 2, figsize=(12, 8))
         for (asset, title), ax in zip(ASSETS.items(), axes.flat, strict=True):
-            region = frame.loc[diagnostics[asset]["region"]]
+            region = frame.loc[
+                frame.region.eq(diagnostics[asset]["region"]) & frame.metric.eq("service_share")
+            ]
             for year, color in zip(
                 (2022, 2030, 2050), ("#1764a0", "#d56c12", "#278643"), strict=True
             ):
                 if year > years[-1]:
                     continue
                 for suffix, style, width in (("-linear-stock", "--", 1), ("", "-", 1.8)):
-                    rows = region.loc[
-                        region.index.str.startswith(
-                            PREFIX + asset + suffix + "|" + vintage_suffix("service_share", "")
-                        )
-                    ]
-                    cohorts = np.array([int(v.split("|")[-1]) for v in rows.index])
-                    select = cohorts <= year
+                    case = region.loc[region.asset.eq(asset + suffix)]
+                    if case.empty:
+                        continue
+                    cohorts = range(int(case.cohort_year.min()), year + 1)
+                    shares = case.loc[case.year.eq(year)].set_index("cohort_year")["value"]
                     ax.plot(
-                        cohorts[select],
-                        rows[str(year)].to_numpy(float)[select],
+                        cohorts,
+                        shares.reindex(cohorts, fill_value=0),
                         color=color,
                         ls=style,
                         lw=width,
@@ -179,6 +172,15 @@ def plot(report_path):
     pd.DataFrame(summary).to_csv(output / "comparison-summary.csv", index=False)
     pd.DataFrame(curves).to_csv(output / "annual-path-comparison.csv", index=False)
     print(json.dumps(summary, indent=2))
+
+
+def annual_amounts(region, asset, metric, years):
+    """Sum vintage quantities for one asset and year."""
+    rows = region.loc[region.asset.eq(asset) & region.metric.eq(metric)]
+    values = rows.groupby("year")["value"].sum().reindex(years, fill_value=0).to_numpy(float)
+    if metric == "addition":
+        values[0] = np.nan
+    return values
 
 
 if __name__ == "__main__":

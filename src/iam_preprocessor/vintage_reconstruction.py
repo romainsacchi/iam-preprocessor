@@ -43,20 +43,6 @@ class AssetReconstruction:
     annualisation: dict | None
     evidence_basis: np.ndarray
 
-    def as_legacy_tuple(self):
-        """Return the tuple used by releases before the pipeline was split."""
-        return (
-            self.cohorts,
-            self.stock_shares,
-            self.service_shares,
-            self.stock_targets,
-            self.reported_additions,
-            self.implied_exit,
-            self.service_target,
-            self.annualisation,
-            self.evidence_basis,
-        )
-
 
 def reconstruct_asset(frame, asset, reference_year, end_year):
     """Reconstruct annual cohorts for one validated asset configuration.

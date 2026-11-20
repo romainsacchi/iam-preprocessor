@@ -6,7 +6,7 @@ from .crypto import decrypt_file, encrypt_file
 from .filtering import filter_variables
 from .prepare import prepare_scenarios
 from .report import ProcessingReport
-from .stock_vintages import enrich_stock_vintages, prepare_stock_vintages
+from .stock_vintages import calculate_stock_vintages, prepare_stock_vintages
 from .stock_workflow import write_stock_config, write_stock_inventory
 from .vintage_inputs import annual_additions, read_iam_series
 from .vintage_reconstruction import AssetReconstruction, reconstruct_asset
@@ -35,9 +35,9 @@ __all__ = [
     "AssetReconstruction",
     "ProcessingReport",
     "annual_additions",
+    "calculate_stock_vintages",
     "decrypt_file",
     "encrypt_file",
-    "enrich_stock_vintages",
     "filter_variables",
     "prepare_scenarios",
     "prepare_stock_vintages",

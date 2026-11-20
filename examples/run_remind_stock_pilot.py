@@ -23,8 +23,7 @@ import yaml
 from iam_preprocessor.exceptions import DataValidationError
 from iam_preprocessor.io import read_frame, sha256_file
 from iam_preprocessor.stock_config import load_stock_config
-from iam_preprocessor.stock_vintages import PREFIX, prepare_stock_vintages
-from iam_preprocessor.variable_maps import vintage_suffix
+from iam_preprocessor.stock_vintages import prepare_stock_vintages
 from iam_preprocessor.vintage_reconstruction import reconstruct_asset
 
 FILES = {
@@ -51,14 +50,12 @@ CASES = (
 
 
 def make_config(archive, output, end_year, annualisation="joint"):
-    """Build the REMIND pilot settings using the reviewed evidence archive."""
+    """Build the REMIND example settings from the original input files."""
     if not 2030 <= end_year <= 2050:
-        raise ValueError(
-            "This reviewed REMIND example supports 2030–2050; later periods need review."
-        )
+        raise ValueError("Choose an end year between 2030 and 2050 for this REMIND example.")
     manifest_path = archive / "manifest.json"
     if sha256_file(manifest_path) != ARCHIVE_MANIFEST_SHA256:
-        raise ValueError("Archive manifest differs from the reviewed evidence snapshot.")
+        raise ValueError("The archive file list differs from the one used in the original run.")
     pins = {item["path"]: item["sha256"] for item in json.loads(manifest_path.read_text())["files"]}
     config = {
         "schema_version": 1,
@@ -235,20 +232,22 @@ def make_config(archive, output, end_year, annualisation="joint"):
 
 def plot_results(output, report):
     """Plot the reconstructed cohort mix and changes in stock in the pilot run."""
-    frame = read_frame(report.output_path).set_index(["Region", "Variable"])
+    frame = pd.read_parquet(report.output_path)
+    shares = frame.loc[frame.metric.eq("service_share")]
+    years = range(report.assumptions["reference_year"], report.assumptions["end_year"] + 1)
+    profiles = {
+        key: group.pivot(index="cohort_year", columns="year", values="value")
+        .reindex(columns=years)
+        .fillna(0)
+        for key, group in shares.groupby(["asset", "region"])
+    }
     fig, axes = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
     ages = []
     for (asset, _), ax in zip(FILES.items(), axes.flat, strict=True):
         region = "USA" if asset in ("pv", "ccgt") else "EUR"
-        subset = frame.loc[region]
+        profile = profiles[(asset, region)]
         for year in sorted({2022, 2030, report.assumptions["end_year"]}):
-            rows = subset.loc[
-                subset.index.str.startswith(
-                    PREFIX + asset + "|" + vintage_suffix("service_share", "")
-                )
-            ]
-            cohorts = np.array([int(v.split("|")[-1]) for v in rows.index])
-            ax.plot(cohorts, rows[str(year)], label=str(year))
+            ax.plot(profile.index, profile[year], label=str(year))
         ax.set(
             title=f"{asset}: reconstructed service composition",
             xlabel="Entry / cohort year",
@@ -257,24 +256,17 @@ def plot_results(output, report):
         ax.legend()
         for case in CASES:
             ident = asset if case == "primary" else f"{asset}-{case}"
-            rows = subset.loc[
-                subset.index.str.startswith(
-                    PREFIX + ident + "|" + vintage_suffix("service_share", "")
-                )
-            ]
-            if rows.empty:
+            profile = profiles.get((ident, region))
+            if profile is None:
                 continue
-            cohorts = np.array([int(v.split("|")[-1]) for v in rows.index])
-            for year in range(
-                report.assumptions["reference_year"], report.assumptions["end_year"] + 1
-            ):
-                weights = rows[str(year)].to_numpy(float)
+            for year in years:
+                weights = profile[year].to_numpy(float)
                 ages.append(
                     {
                         "asset": asset,
                         "case": case,
                         "year": year,
-                        "mean_age": float(np.dot(year - cohorts, weights)),
+                        "mean_age": float(np.dot(year - profile.index, weights)),
                         "weight_sum": float(weights.sum()),
                     }
                 )

@@ -1,4 +1,4 @@
-"""Extend the pinned, single REMIND pilot with audited vehicle and power cohorts.
+"""Extend the REMIND example with more vehicle and power asset groups.
 
 Run with PYTHONPATH=src python examples/run_remind_sector_expansion.py --help.
 Scenario data, raw observations and generated profiles stay outside version control.
@@ -62,8 +62,8 @@ DEFERRED = {
     "cycle/calendar ageing and matching initial cohorts.",
     "heat, hydrogen and industrial equipment": "Some capacity/lifetime variables exist; "
     "asset boundary, initial cohorts and service units need sector-specific review.",
-    "buildings, roads, water infrastructure": "No reviewed stock/inflow/lifetime crosswalk in "
-    "this pilot; retain the separate observation-based infrastructure work.",
+    "buildings, roads, water infrastructure": "The example needs matching stock, additions, "
+    "and lifetime data for these assets.",
 }
 
 
@@ -212,9 +212,7 @@ def main():
     source, config = make_expanded_config(args.archive, args.output_dir, args.end_year)
     record_rejected_sensitivities(source, config, primary_ids=PRIMARY)
     report = prepare_stock_vintages(source, args.output_dir, config)
-    validation = validate(
-        Path(report.output_path).with_name(Path(report.output_path).stem + "_report.json")
-    )
+    validation = validate(args.output_dir / f"{source.stem}_stock_vintages_report.json")
     print(
         json.dumps(
             {
