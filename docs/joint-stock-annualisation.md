@@ -108,8 +108,8 @@ pilot covers years through 2050.
 
 ## Checking and repeating the example
 
-For each asset, the report shows whether both input series could be matched,
-the values and periods used, differences from reported values, the shares
+The pilot enables the detailed report. For each asset, it shows whether both
+input series could be matched, the values and periods used, differences from reported values, the shares
 retired early, the fit weights, and the solver checks. `Stock Residual` compares
 the fit with the straight-line estimate. The difference from the reported stock
 is recorded separately in `annualisation.stock_anchor_max_absolute_residual`.

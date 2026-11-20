@@ -1,4 +1,5 @@
 import json
+import logging
 from copy import deepcopy
 from pathlib import Path
 
@@ -335,6 +336,11 @@ def test_stock_vintage_cli_writes_only_separate_package_and_report(inputs, tmp_p
         "validation.json",
     }
     report = json.loads(report_path.read_text())
+    assert report["warnings"] == []
+    assert "assets" not in report["assumptions"]
+    assert report["assumptions"]["validation_status"] == "pass"
+    assert report["assumptions"]["config_path"] == str(config)
+    assert "assets" not in json.loads((package / "validation.json").read_text())
     assert Path(report["output_path"]) == package / "vintages.parquet"
     assert sha256_file(report["output_path"]) == report["output_sha256"]
     assert report["assumptions"]["origin"] == "reconstructed_not_native"
@@ -353,6 +359,47 @@ def test_stock_vintage_cli_writes_only_separate_package_and_report(inputs, tmp_p
     }
     with pytest.raises(IamPreprocessorError, match="already exists"):
         prepare_stock_vintages(source, output, config)
+
+
+def test_stock_vintage_cli_hides_routine_flodym_messages_and_keeps_requested_detail(
+    inputs, tmp_path, caplog, monkeypatch
+):
+    frame, config, config_path, source = inputs
+    config["assets"][0]["exit_policy"] = "remove_by_hazard"
+    config_path.write_text(yaml.safe_dump(config))
+    frame.loc[frame["Variable"].eq("Stock|Cars"), ["2025", "2030"]] = [4, 2]
+    frame.to_csv(source, sep=";", index=False)
+    original_prepare = prepare_stock_vintages
+
+    def run_with_warning(*args, **kwargs):
+        logging.getLogger("flodym.stocks").warning("An unrelated FLODyM warning")
+        return original_prepare(*args, **kwargs)
+
+    monkeypatch.setattr("iam_preprocessor.cli.prepare_stock_vintages", run_with_warning)
+    output = tmp_path / "detailed"
+    result = CliRunner().invoke(
+        app,
+        [
+            "stock-vintages",
+            str(source),
+            "--config",
+            str(config_path),
+            "-o",
+            str(output),
+            "--detailed-report",
+        ],
+    )
+    assert result.exit_code == 0, result.exception
+    report = json.loads((output / f"{source.stem}_stock_vintages_report.json").read_text())
+    validation = json.loads(
+        (output / f"{source.stem}_stock_vintages_v2" / "validation.json").read_text()
+    )
+    assert report["warnings"] == []
+    assert report["assumptions"]["assets"][0]["total_additional_exits"] > 0
+    assert validation["status"] == "pass"
+    assert validation["assets"][0]["checks"]["numerical_residuals"]["status"] == "pass"
+    assert "Modified the lifetime model" not in caplog.text
+    assert "An unrelated FLODyM warning" in caplog.text
 
 
 def test_overwrite_cannot_replace_a_directory_containing_the_scenario(inputs, tmp_path):

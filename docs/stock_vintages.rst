@@ -35,8 +35,9 @@ joint fit uses SciPy and OSQP to estimate annual additions from the IAM input.
 The installation above uses the revision from
 `FLODyM PR #261 <https://github.com/pik-piam/flodym/pull/261>`_.
 
-The separate Parquet table contains the build-year estimates. The run report shows which
-inputs and settings were used and where the estimates differ from the input data.
+The separate Parquet table contains the build-year estimates. The run report records the
+inputs and settings. The reports flag failed checks and any changes joint mode made to
+reported additions. Use ``--detailed-report`` to see the checks for every asset and region.
 
 See ``docs/stock-vintages.md`` for the equations, example settings, output
 formats, and limitations.

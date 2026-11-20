@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import typer
@@ -68,15 +69,35 @@ def prepare_command(
     _show_reports(reports)
 
 
+def _keep_stock_message(record: logging.LogRecord) -> bool:
+    """Keep FLODyM warnings other than expected stock-driven behaviour."""
+    message = record.getMessage()
+    routine_retirement = message.startswith("Modified the lifetime model of stock ") and (
+        message.endswith(" time step(s) to avoid negative inflow.")
+    )
+    zero_stock = message == "Stock is zero. This will lead to a zero inflow and outflow."
+    return record.levelno != logging.WARNING or not (routine_retirement or zero_stock)
+
+
 @app.command("stock-vintages")
 def stock_vintages_command(
     source: Path = typer.Argument(..., exists=True, readable=True, dir_okay=False),
     config: Path = typer.Option(..., "--config", exists=True, readable=True, dir_okay=False),
     output_dir: Path = typer.Option(..., "--output-dir", "-o"),
     overwrite: bool = typer.Option(False, "--overwrite"),
+    detailed_report: bool = typer.Option(
+        False, "--detailed-report", help="Include results and checks for every asset and region."
+    ),
 ) -> None:
     """Calculate stock by build year and save it in a separate Parquet file."""
-    report = prepare_stock_vintages(source, output_dir, config, overwrite=overwrite)
+    stock_logger = logging.getLogger("flodym.stocks")
+    stock_logger.addFilter(_keep_stock_message)
+    try:
+        report = prepare_stock_vintages(
+            source, output_dir, config, overwrite=overwrite, detailed_report=detailed_report
+        )
+    finally:
+        stock_logger.removeFilter(_keep_stock_message)
     _show_reports([report])
 
 

@@ -228,9 +228,17 @@ Each table row gives the model, scenario, region, asset, year in use, year built
 type of result, value, unit, and where the estimate came from. Results include
 stock, shares of stock or use, additions, and retirements.
 
-The separate run report lists the assumptions and software versions and shows where the
-estimates differ from the input data. It also lists the SHA-256 hashes of the
-files used in the run.
+The separate run report records the inputs, settings, and software versions.
+`validation.json` gives the outcome and number of cases checked. It groups
+failed checks and any changes joint mode made to reported additions, with a few
+examples of each problem. Add `--detailed-report` to include the full checks
+and estimates for each asset and region.
+
+FLODyM can bring retirements forward in stock-driven mode when the reported
+stock falls below the amount that would normally survive. This keeps the
+estimate of new construction at zero in those years. The default CLI log
+omits FLODyM's routine messages about this adjustment and about zero stock.
+Early retirements are recorded in the Parquet table and in the detailed run report.
 
 ## Service shares and later use
 
@@ -257,9 +265,6 @@ and calculate the impacts using the background data for those years.
 - Total use gives little information about how use is shared between age groups.
 - The end-year convention approximates within-year construction and operation.
 - Results depend on the selected technology and regional boundaries.
-
-`validation.json` and the run report show whether the numbers balance and where
-the results depend on limited observations.
 
 ## Further detail
 

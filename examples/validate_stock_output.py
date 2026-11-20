@@ -10,8 +10,10 @@ import pandas as pd
 
 from iam_preprocessor.io import read_frame, sha256_file, year_columns
 from iam_preprocessor.lifetime import canonical_distribution
+from iam_preprocessor.stock_config import load_stock_config
 from iam_preprocessor.stock_vintages import PREFIX
 from iam_preprocessor.variable_maps import vintage_suffix
+from iam_preprocessor.vintage_inputs import annual_additions
 
 
 def validate_long_parquet(report, report_path, original):
@@ -47,25 +49,42 @@ def validate_long_parquet(report, report_path, original):
         raise ValueError("Future cohorts occur in v2 output")
 
     metadata = report["assumptions"]
+    detailed = "assets" in metadata
+    if detailed:
+        assets = metadata["assets"]
+    else:
+        if sha256_file(metadata["config_path"]) != metadata["config_sha256"]:
+            raise ValueError("Stock settings hash mismatch")
+        settings = load_stock_config(metadata["config_path"])
+        assets = [
+            {"asset": item["id"], "region": item["region"], "configuration": item}
+            for item in settings["assets"]
+        ]
     reference_year = metadata["reference_year"]
     years = np.arange(reference_year, metadata["end_year"] + 1)
     source_columns = year_columns(original)
-    source_years = set(map(int, source_columns))
+    source_years = np.array([int(column) for column in source_columns])
+    source_regions = {
+        region: data.set_index("Variable") for region, data in original.groupby("Region")
+    }
+    output_groups = output.groupby(["region", "asset"], sort=False).indices
+    expected_cases = {(asset["region"], asset["asset"]) for asset in assets}
+    if not output_groups.keys() <= expected_cases:
+        raise ValueError("Unexpected asset or region in the vintage table")
     checks = []
     maximum_balance_residual = 0.0
     maximum_survival_residual = 0.0
-    for asset in metadata["assets"]:
+    for asset in assets:
         config = asset["configuration"]
-        subset = output.loc[
-            output["region"].eq(asset["region"]) & output["asset"].eq(asset["asset"])
-        ]
-        if subset.empty:
-            raise ValueError(f"Missing v2 asset case: {asset['asset']}/{asset['region']}")
-        if config["initial"]["kind"] == "observed_shares":
+        source_region = source_regions[asset["region"]]
+        subset = output.iloc[output_groups.get((asset["region"], asset["asset"]), [])]
+        if "observation_sha256" in asset:
             if sha256_file(config["initial"]["file"]) != asset["observation_sha256"]:
                 raise ValueError("Initial observation hash mismatch")
         stock_rows = subset.loc[subset["metric"].eq("stock")]
-        cohorts = np.arange(stock_rows["cohort_year"].min(), years[-1] + 1)
+        # An all-zero asset can have no rows in the sparse output table.
+        first_cohort = reference_year if stock_rows.empty else stock_rows["cohort_year"].min()
+        cohorts = np.arange(first_cohort, years[-1] + 1)
         stocks = (
             stock_rows.pivot(index="year", columns="cohort_year", values="value")
             .reindex(index=years, columns=cohorts, fill_value=0)
@@ -74,27 +93,24 @@ def validate_long_parquet(report, report_path, original):
         )
         totals = stocks.sum(axis=1)
         scale = max(1.0, float(totals.max()))
-        opening_by_basis = (
-            stock_rows.loc[stock_rows["year"].eq(reference_year)]
-            .groupby("evidence_basis")["value"]
-            .sum()
-        )
-        opening_total = totals[0]
-        expected_prior = opening_by_basis.get("prior", 0.0) / opening_total if opening_total else 0
-        expected_direct = (
-            opening_by_basis.get("observed", 0.0) / opening_total if opening_total else 0
-        )
-        expected_proxy = (
-            opening_by_basis.get("observed_proxy", 0.0) / opening_total if opening_total else 0
-        )
-        reported_direct = asset.get(
-            "opening_direct_evidence_share", asset.get("opening_evidence_share", 0.0)
-        )
-        reported_proxy = asset.get("opening_proxy_evidence_share", 0.0)
-        reported_prior = asset.get("opening_prior_share", 1.0 - reported_direct - reported_proxy)
-        np.testing.assert_allclose(reported_prior, expected_prior, atol=1e-12)
-        np.testing.assert_allclose(reported_direct, expected_direct, atol=1e-12)
-        np.testing.assert_allclose(reported_proxy, expected_proxy, atol=1e-12)
+        if detailed:
+            opening = stock_rows.loc[stock_rows["year"].eq(reference_year)]
+            amounts = opening.groupby("evidence_basis")["value"].sum()
+            opening_shares = amounts / totals[0] if totals[0] else amounts
+            reported_direct = asset.get(
+                "opening_direct_evidence_share", asset.get("opening_evidence_share", 0.0)
+            )
+            reported_proxy = asset.get("opening_proxy_evidence_share", 0.0)
+            reported_prior = asset.get(
+                "opening_prior_share", 1.0 - reported_direct - reported_proxy
+            )
+            np.testing.assert_allclose(reported_prior, opening_shares.get("prior", 0), atol=1e-12)
+            np.testing.assert_allclose(
+                reported_direct, opening_shares.get("observed", 0), atol=1e-12
+            )
+            np.testing.assert_allclose(
+                reported_proxy, opening_shares.get("observed_proxy", 0), atol=1e-12
+            )
 
         for metric in ("stock_share", "service_share"):
             rows = subset.loc[subset["metric"].eq(metric)]
@@ -106,7 +122,17 @@ def validate_long_parquet(report, report_path, original):
             )
             expected_share_sum = (totals > 0).astype(float)
             if metric == "service_share":
-                expected_share_sum[np.isin(years, asset["zero_service_years"])] = 0
+                if detailed:
+                    expected_share_sum[np.isin(years, asset["zero_service_years"])] = 0
+                elif "service" in config:
+                    service = source_region.loc[config["service"]["variable"], source_columns]
+                    expected_share_sum = np.interp(years, source_years, service.to_numpy(float)) > 0
+                elif (
+                    config["service_weighting"]["kind"] != "equal"
+                    or config["service_weighting"].get("new_cohort_exposure", 1) == 0
+                ):
+                    # Some weights can assign zero use to every surviving group.
+                    expected_share_sum *= (values > 0).any(axis=1)
             np.testing.assert_allclose(values.sum(axis=1), expected_share_sum, rtol=0, atol=1e-10)
             if metric == "stock_share":
                 np.testing.assert_allclose(values * totals[:, None], stocks, rtol=1e-10, atol=1e-12)
@@ -128,13 +154,25 @@ def validate_long_parquet(report, report_path, original):
         np.testing.assert_allclose(balance, 0, rtol=0, atol=1e-10 * scale)
         maximum_balance_residual = max(maximum_balance_residual, float(np.abs(balance).max()))
 
-        source_region = original.loc[original.Region.eq(asset["region"])].set_index("Variable")
-        stock_source = source_region.loc[config["stock"]["variable"]]
-        for year, actual in zip(years, totals, strict=True):
-            if config["mode"] != "inflow" and year in source_years:
-                np.testing.assert_allclose(
-                    actual, stock_source[str(year)], rtol=0, atol=1e-9 * scale
-                )
+        stock_source = source_region.loc[config["stock"]["variable"], source_columns].to_numpy(
+            float
+        )
+        target_years = years
+        if config["mode"] == "inflow":
+            target_years = years[:1]
+        elif config["mode"] == "joint":
+            target_years = np.union1d(years[:1], np.intersect1d(years, source_years))
+        np.testing.assert_allclose(
+            totals[target_years - reference_year],
+            np.interp(target_years, source_years, stock_source),
+            rtol=0,
+            atol=1e-9 * scale,
+        )
+        if config["mode"] in {"inflow", "stock_flow"}:
+            flow_source = source_region.loc[config["inflow"]["variable"], source_columns]
+            flow_series = dict(zip(source_years, flow_source.to_numpy(float), strict=True))
+            expected = annual_additions(flow_series, years[1:], config["inflow_timing"])
+            np.testing.assert_allclose(additions[1:], expected, rtol=0, atol=1e-9 * scale)
 
         joint = asset.get("annualisation")
         if joint is not None:
@@ -207,34 +245,32 @@ def validate_long_parquet(report, report_path, original):
             np.testing.assert_allclose(stocks, expected, rtol=1e-9, atol=1e-9)
             maximum_survival_residual = max(maximum_survival_residual, residual)
 
-        checks.append(
-            {
-                "asset": asset["asset"],
-                "region": asset["region"],
-                "years": len(years),
-                "cohorts": len(cohorts),
-                "max_balance_residual": float(np.abs(balance).max()),
-                "passed": True,
-                "joint_source_constraints_checked": joint is not None,
-            }
-        )
+        if detailed:
+            checks.append(
+                {
+                    "asset": asset["asset"],
+                    "region": asset["region"],
+                    "years": len(years),
+                    "cohorts": len(cohorts),
+                    "max_balance_residual": float(np.abs(balance).max()),
+                    "passed": True,
+                    "joint_source_constraints_checked": joint is not None,
+                }
+            )
 
-    expected_cases = {(asset["region"], asset["asset"]) for asset in metadata["assets"]}
-    actual_cases = set(map(tuple, output[["region", "asset"]].drop_duplicates().to_numpy()))
-    if actual_cases != expected_cases:
-        raise ValueError("Serialized v2 asset cases differ from the report")
     result = {
         "all_passed": True,
         "format": "v2 long-form parquet",
         "source_rows": len(original),
         "serialized_rows": len(output),
-        "asset_cases_checked": len(checks),
-        "annual_profiles_checked": len(years) * len(checks),
+        "asset_cases_checked": len(assets),
+        "annual_profiles_checked": len(years) * len(assets),
         "maximum_balance_residual": maximum_balance_residual,
-        "maximum_survival_residual": maximum_survival_residual,
-        "asset_cases": checks,
         "output_sha256": report["output_sha256"],
     }
+    if detailed:
+        result["maximum_survival_residual"] = maximum_survival_residual
+        result["asset_cases"] = checks
     destination = report_path.parent / "serialized-output-validation.json"
     destination.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps({key: value for key, value in result.items() if key != "asset_cases"}))

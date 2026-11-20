@@ -211,7 +211,7 @@ def main():
     args.output_dir.mkdir(parents=True, exist_ok=True)
     source, config = make_expanded_config(args.archive, args.output_dir, args.end_year)
     record_rejected_sensitivities(source, config, primary_ids=PRIMARY)
-    report = prepare_stock_vintages(source, args.output_dir, config)
+    report = prepare_stock_vintages(source, args.output_dir, config, detailed_report=True)
     validation = validate(args.output_dir / f"{source.stem}_stock_vintages_report.json")
     print(
         json.dumps(

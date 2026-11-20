@@ -134,6 +134,8 @@ def report_data(run_dir, baseline_report_path):
     new_report_path = next((run_dir / "results").glob("*_stock_vintages_report.json"))
     new_report = load_json(new_report_path)
     baseline_report = load_json(baseline_report_path)
+    if any("assets" not in report["assumptions"] for report in (new_report, baseline_report)):
+        raise ValueError("Run stock-vintages with --detailed-report to produce these plots.")
     new_table = pd.read_parquet(new_report["output_path"])
     baseline_table = pd.read_parquet(baseline_report["output_path"])
     independent = load_json(run_dir / "results" / "serialized-output-validation.json")

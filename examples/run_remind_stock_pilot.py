@@ -334,7 +334,7 @@ def main():
     args.output_dir.mkdir(parents=True, exist_ok=True)
     source, config = make_config(args.archive, args.output_dir, args.end_year, args.annualisation)
     record_rejected_sensitivities(source, config)
-    report = prepare_stock_vintages(source, args.output_dir, config)
+    report = prepare_stock_vintages(source, args.output_dir, config, detailed_report=True)
     plot_results(args.output_dir, report)
     print(
         json.dumps(

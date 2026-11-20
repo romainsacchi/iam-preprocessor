@@ -25,8 +25,10 @@ def plot(report_path):
     """Plot the annual reconstruction and the original IAM time points."""
     report = json.loads(report_path.read_text())
     output = report_path.parent
-    frame = pd.read_parquet(report["output_path"])
     metadata = report["assumptions"]
+    if "assets" not in metadata:
+        raise ValueError("Run stock-vintages with --detailed-report to produce these plots.")
+    frame = pd.read_parquet(report["output_path"])
     years = np.arange(metadata["reference_year"], metadata["end_year"] + 1)
     diagnostics = {a["asset"]: a for a in metadata["assets"]}
     summary = []

@@ -18,7 +18,13 @@ from .exceptions import DataValidationError, IamPreprocessorError
 from .io import read_frame, sha256_file, validate_frame
 from .report import ProcessingReport
 from .stock_config import load_stock_config
-from .stock_package import COLUMNS, SCHEMA_VERSION, write_vintage_package
+from .stock_package import (
+    COLUMNS,
+    SCHEMA_VERSION,
+    validation_contract,
+    validation_summary,
+    write_vintage_package,
+)
 from .variable_maps import variable_map
 from .vintage_reconstruction import reconstruct_asset
 
@@ -172,7 +178,9 @@ def _asset_diagnostics(asset, reconstruction):
     return diagnostic
 
 
-def prepare_stock_vintages(source, output_dir, config_path, *, overwrite=False):
+def prepare_stock_vintages(
+    source, output_dir, config_path, *, overwrite=False, detailed_report=False
+):
     """Write a separate stock-vintage package and report for one scenario file."""
     source, output_dir = Path(source), Path(output_dir)
     config = load_stock_config(config_path)
@@ -187,6 +195,9 @@ def prepare_stock_vintages(source, output_dir, config_path, *, overwrite=False):
         raise IamPreprocessorError("Output already exists; use --overwrite to replace it.")
     frame = read_frame(source)
     vintages, diagnostics = calculate_stock_vintages(frame, config)
+    validation = validation_summary(diagnostics)
+    if detailed_report:
+        validation["assets"] = validation_contract(diagnostics)["assets"]
     # Record the library revision and input hashes so the run can be reproduced.
     flodym = distribution("flodym")
     flodym_origin = json.loads(flodym.read_text("direct_url.json") or "{}")
@@ -195,13 +206,21 @@ def prepare_stock_vintages(source, output_dir, config_path, *, overwrite=False):
         input_path=str(source.resolve()),
         input_sha256=sha256_file(source),
         input_rows=len(frame),
+        warnings=[
+            f"{issue['message']} Affected cases ({issue['cases']} of {len(diagnostics)})."
+            for issue in validation.get("issues", [])
+        ],
         assumptions={
             "stock_vintage_schema_version": SCHEMA_VERSION,
             "origin": "reconstructed_not_native",
             "scenario": config["scenario"],
             "reference_year": config["reference_year"],
             "end_year": config["end_year"],
+            "config_path": str(Path(config_path).resolve()),
             "config_sha256": sha256_file(config_path),
+            "validation_status": validation["status"],
+            "asset_region_cases": validation["cases_checked"],
+            "cases_with_issues": validation["cases_with_issues"],
             "flodym_version": flodym.version,
             "flodym_commit": flodym_origin.get("vcs_info", {}).get("commit_id"),
             "software_versions": {
@@ -228,7 +247,6 @@ def prepare_stock_vintages(source, output_dir, config_path, *, overwrite=False):
                 name: sha256_file(Path(__file__).with_name("data") / name)
                 for name in ("vintage_output_variables.yaml",)
             },
-            "assets": diagnostics,
             "stock_timing": "end_of_year",
             "entry_timing": "end_of_year",
             "service_timing": "end_year_serving_stock_proxy_with_explicit_new_cohort_exposure",
@@ -237,33 +255,15 @@ def prepare_stock_vintages(source, output_dir, config_path, *, overwrite=False):
             "service_target_effect": "total_only_does_not_identify_relative_cohort_use",
         },
     )
-    for d in diagnostics:
-        if d["negative_implied_exit_years"]:
-            report.warnings.append(
-                f"{d['asset']}/{d['region']}: stock and annualised inflow imply "
-                f"negative exits in {d['negative_implied_exit_years']}; "
-                "this diagnostic uses independent linear/flat annualisation. "
-                "For joint mode, see the separate constraint reconciliation."
-            )
-        if "annualisation" in d and not d["annualisation"]["exact_inflow_constraints_feasible"]:
-            report.warnings.append(
-                f"{d['asset']}/{d['region']}: reported inflows conflict with stock anchors "
-                "under the configured survival/exit assumptions. Stock anchors retained; "
-                "a configured rate-residual penalty balances inflow agreement and smoothness. "
-                "Every source-constraint discrepancy is explicitly reported."
-            )
-        if d["total_additional_exits"] > 0:
-            report.warnings.append(
-                f"{d['asset']}/{d['region']}: additional exits follow the configured "
-                f"{d['configuration']['exit_policy']} policy. Physical disposal is unobserved."
-            )
+    if detailed_report:
+        report.assumptions["assets"] = diagnostics
     write_vintage_package(
         vintages,
         package_path,
         source_path=source,
         config_path=config_path,
         config=config,
-        diagnostics=diagnostics,
+        validation=validation,
         overwrite=overwrite,
     )
     report.assumptions["vintage_package_path"] = str(package_path.resolve())

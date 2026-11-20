@@ -135,8 +135,10 @@ output/stocks/
 - Each row of the **Parquet table** gives a region, asset, year in use, build
   year, and result type. The package also has a file list and a summary of the
   stock and share checks.
-- The **run report** shows the settings used and any differences between the
-  estimates and the reported IAM values.
+- The **run report** records the input and settings used. The reports flag
+  failed checks and any changes joint mode made to reported additions. A
+  successful run has a short validation summary. Add `--detailed-report` to
+  see the results of each check by asset and region.
 
 The proposed handoff gives premise the IAM scenario on its reported year grid
 and supplies the annual build-year shares in a separate file. How premise will

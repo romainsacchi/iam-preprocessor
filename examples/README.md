@@ -11,7 +11,8 @@
   Starting ages follow the steady-additions assumption from the earlier
   REMIND runs.
 - `validate_stock_output.py` compares the saved results with the input scenario
-  and checks that the stock balance closes.
+  and checks that the stock balance closes. Keep the `stocks.yaml` used for
+  the run so this script can check the results from a short report.
 
 ## Research reproduction
 
@@ -28,4 +29,5 @@ observations. The export script also needs the corresponding version of `premise
   from UK registration data.
 - `build_remind_jrc_vehicle_stock_run.py` prepares a 2005 starting-stock example
   using JRC-IDEES vehicle data. `report_remind_jrc_vehicle_stock_run.py` plots
-  the results alongside an earlier run.
+  the results alongside an earlier run. Run `stock-vintages` with
+  `--detailed-report` for these plots.

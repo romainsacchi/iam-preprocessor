@@ -661,7 +661,9 @@ def main():
     ):
         raise ValueError("Baseline configuration changed")
     config = configure(files, args.baseline, out, decisions, curves)
-    report = prepare_stock_vintages(files["scenario"], out, config, overwrite=True)
+    report = prepare_stock_vintages(
+        files["scenario"], out, config, overwrite=True, detailed_report=True
+    )
     validate(out / f"{Path(files['scenario']).stem}_stock_vintages_report.json")
     compare_baseline(files, report, out)
     save(

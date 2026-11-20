@@ -81,30 +81,91 @@ def validate_vintage_table(table: pd.DataFrame) -> None:
         raise DataValidationError("Stock shares must sum to one for every positive stock group.")
 
 
+def _numerical_check(diagnostic):
+    """Check the stock balance and the targets that the selected mode must meet."""
+    scale = max(float(diagnostic.get("maximum_stock_target", 0)), 1.0)
+    tolerance = max(1e-10, 1e-9 * scale)
+    mode = diagnostic["mode"]
+    numerical_values = [abs(diagnostic["maximum_balance_residual"])]
+    if mode in {"stock", "stock_flow"}:
+        numerical_values.append(abs(diagnostic["maximum_absolute_stock_residual"]))
+    if mode in {"inflow", "stock_flow"}:
+        numerical_values.append(abs(diagnostic["maximum_absolute_inflow_residual"]))
+    if mode == "joint":
+        numerical_values.append(
+            abs(diagnostic["annualisation"]["stock_anchor_max_absolute_residual"])
+        )
+        if diagnostic["annualisation"]["exact_inflow_constraints_feasible"]:
+            numerical_values.append(
+                abs(diagnostic["annualisation"]["actual_sum_absolute_rate_residual"])
+            )
+    numerical_value = max(numerical_values)
+    numerical = "pass" if numerical_value <= tolerance else "fail"
+    return {
+        "status": numerical,
+        "maximum_absolute_residual": numerical_value,
+        "tolerance": tolerance,
+    }
+
+
+def validation_summary(diagnostics):
+    """Group problems and give a few examples of each type."""
+    failed, adjusted = [], []
+    cases_with_issues = 0
+    for diagnostic in diagnostics:
+        identity = {"asset": diagnostic["asset"], "region": diagnostic["region"]}
+        numerical = _numerical_check(diagnostic)
+        numerical_failed = numerical["status"] == "fail"
+        fit = diagnostic.get("annualisation")
+        additions_adjusted = fit is not None and not fit["exact_inflow_constraints_feasible"]
+        if numerical_failed or additions_adjusted:
+            cases_with_issues += 1
+        if numerical_failed:
+            failed.append(
+                {
+                    **identity,
+                    "residual": numerical["maximum_absolute_residual"],
+                    "tolerance": numerical["tolerance"],
+                }
+            )
+        if additions_adjusted:
+            adjusted.append(identity)
+
+    summary = {
+        "schema_version": SCHEMA_VERSION,
+        "status": "fail" if failed else "warning" if adjusted else "pass",
+        "cases_checked": len(diagnostics),
+        "cases_with_issues": cases_with_issues,
+    }
+    issues = []
+    if failed:
+        issues.append(
+            {
+                "message": "A required stock, additions or balance check failed.",
+                "cases": len(failed),
+                "examples": failed[:5],
+            }
+        )
+    if adjusted:
+        issues.append(
+            {
+                "message": "The joint fit adjusted reported additions to match the reported stock.",
+                "cases": len(adjusted),
+                "examples": adjusted[:5],
+            }
+        )
+    if issues:
+        summary["issues"] = issues
+    return summary
+
+
 def validation_contract(diagnostics: list[dict]) -> dict:
     """Separate numerical, structural and evidence assessments."""
     assets = []
     rank = {"pass": 0, "warning": 1, "fail": 2}
     overall = "pass"
     for diagnostic in diagnostics:
-        scale = max(float(diagnostic.get("maximum_stock_target", 0)), 1.0)
-        tolerance = max(1e-10, 1e-9 * scale)
         mode = diagnostic["mode"]
-        numerical_values = [abs(diagnostic["maximum_balance_residual"])]
-        if mode in {"stock", "stock_flow"}:
-            numerical_values.append(abs(diagnostic["maximum_absolute_stock_residual"]))
-        if mode in {"inflow", "stock_flow"}:
-            numerical_values.append(abs(diagnostic["maximum_absolute_inflow_residual"]))
-        if mode == "joint":
-            numerical_values.append(
-                abs(diagnostic["annualisation"]["stock_anchor_max_absolute_residual"])
-            )
-            if diagnostic["annualisation"]["exact_inflow_constraints_feasible"]:
-                numerical_values.append(
-                    abs(diagnostic["annualisation"]["actual_sum_absolute_rate_residual"])
-                )
-        numerical_value = max(numerical_values)
-        numerical = "pass" if numerical_value <= tolerance else "fail"
         source_conflict = bool(
             diagnostic["negative_implied_exit_years"]
             or diagnostic["implied_exits_exceed_opening_stock_years"]
@@ -121,11 +182,7 @@ def validation_contract(diagnostics: list[dict]) -> dict:
         evidence = "pass" if direct_share >= 1 - 1e-9 else "warning"
         prior = "pass" if prior_share <= 1e-9 else "warning"
         checks = {
-            "numerical_residuals": {
-                "status": numerical,
-                "maximum_absolute_residual": numerical_value,
-                "tolerance": tolerance,
-            },
+            "numerical_residuals": _numerical_check(diagnostic),
             "source_precision": {
                 "status": "warning",
                 "reason": "annual values between IAM anchors are linearly interpolated",
@@ -167,7 +224,7 @@ def write_vintage_package(
     source_path,
     config_path,
     config,
-    diagnostics,
+    validation,
     overwrite=False,
 ):
     """Atomically write a checksum-bound Parquet package and validation report."""
@@ -191,10 +248,10 @@ def write_vintage_package(
                 "rows": len(table),
             }
         ]
-        validation = temporary / "validation.json"
-        _json(validation, validation_contract(diagnostics))
+        validation_path = temporary / "validation.json"
+        _json(validation_path, validation)
         resources.append(
-            {"path": validation.name, "format": "json", "sha256": sha256_file(validation)}
+            {"path": validation_path.name, "format": "json", "sha256": sha256_file(validation_path)}
         )
         # This profile identifies the file format used by consumers of the package.
         manifest = {

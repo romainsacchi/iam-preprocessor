@@ -9,6 +9,7 @@ from iam_preprocessor.stock_package import (
     COLUMNS,
     validate_vintage_table,
     validation_contract,
+    validation_summary,
     write_vintage_package,
 )
 
@@ -83,7 +84,7 @@ def test_package_is_checksum_bound_and_parquet_is_canonical(tmp_path):
             "reference_year": 2020,
             "end_year": 2030,
         },
-        diagnostics=diagnostics,
+        validation=validation_summary(diagnostics),
     )
     manifest = json.loads((destination / "datapackage.json").read_text())
     assert manifest["schema_version"] == 2
@@ -94,7 +95,12 @@ def test_package_is_checksum_bound_and_parquet_is_canonical(tmp_path):
         pd.read_parquet(destination / parquet["path"]), table()[COLUMNS], check_dtype=False
     )
     validation = json.loads((destination / "validation.json").read_text())
-    assert validation["status"] == "warning"  # interpolation precision is disclosed
+    assert validation == {
+        "schema_version": 2,
+        "status": "pass",
+        "cases_checked": 1,
+        "cases_with_issues": 0,
+    }
 
 
 def test_joint_validation_uses_stock_anchors_and_marks_source_conflict_as_warning():
@@ -123,6 +129,31 @@ def test_joint_validation_uses_stock_anchors_and_marks_source_conflict_as_warnin
     checks = result["assets"][0]["checks"]
     assert checks["numerical_residuals"]["status"] == "pass"
     assert checks["structural_consistency"]["status"] == "warning"
+    summary = validation_summary(diagnostics)
+    assert summary["status"] == "warning"
+    assert summary["cases_with_issues"] == 1
+    assert summary["issues"][0]["examples"] == [{"asset": "pv", "region": "DEU"}]
+
+
+def test_validation_groups_failures_and_limits_examples():
+    diagnostics = [
+        {
+            "asset": f"asset-{i}",
+            "region": "DEU",
+            "mode": "stock",
+            "maximum_balance_residual": 0,
+            "maximum_absolute_stock_residual": 0.02,
+            "maximum_stock_target": 10,
+        }
+        for i in range(7)
+    ]
+    summary = validation_summary(diagnostics)
+    assert summary["status"] == "fail"
+    assert summary["cases_checked"] == summary["cases_with_issues"] == 7
+    (issue,) = summary["issues"]
+    assert issue["cases"] == 7
+    assert len(issue["examples"]) == 5
+    assert issue["examples"][0]["residual"] > issue["examples"][0]["tolerance"]
 
 
 def test_proxy_opening_evidence_cannot_pass_as_direct_coverage():
@@ -135,7 +166,7 @@ def test_proxy_opening_evidence_cannot_pass_as_direct_coverage():
             "maximum_absolute_stock_residual": 0,
             "maximum_absolute_inflow_residual": 0,
             "maximum_stock_target": 10,
-            "negative_implied_exit_years": [],
+            "negative_implied_exit_years": [2025],
             "implied_exits_exceed_opening_stock_years": [],
             "opening_evidence_share": 1,
             "opening_direct_evidence_share": 0,
@@ -147,3 +178,4 @@ def test_proxy_opening_evidence_cannot_pass_as_direct_coverage():
     assert checks["evidence_coverage"]["status"] == "warning"
     assert checks["evidence_coverage"]["opening_proxy_evidence_share"] == 1
     assert checks["prior_dependence"]["status"] == "pass"
+    assert validation_summary(diagnostics)["status"] == "pass"
