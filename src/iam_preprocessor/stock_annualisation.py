@@ -15,7 +15,7 @@ from scipy.optimize import Bounds, LinearConstraint, linprog, minimize
 from scipy.sparse import csc_matrix, eye, vstack
 
 from .exceptions import DataValidationError
-from .stock_model import CohortResult
+from .stock_model import reconstruct
 
 
 def joint_horizon(stock_series, reference_year, end_year, timing):
@@ -369,28 +369,17 @@ def reconstruct_joint(
         reference_inflows[1:],
         **options,
     )
-    stock = np.zeros_like(baseline.stock)
-    stock[0] = baseline.stock[0]
-    natural, additional, balance = [np.full(n, np.nan) for _ in range(3)]
-    natural_by_cohort = np.full_like(stock, np.nan)
-    additional_by_cohort = np.full_like(stock, np.nan)
-    for t in range(1, n):
-        ratio = np.divide(
-            survival[ref + t],
-            survival[ref + t - 1],
-            out=np.zeros(len(cohorts)),
-            where=survival[ref + t - 1] > 0,
-        )
-        survivors = stock[t - 1] * ratio
-        natural_by_cohort[t] = stock[t - 1] - survivors
-        natural[t] = natural_by_cohort[t].sum()
-        additional_by_cohort[t] = survivors * (1 - retention[t])
-        additional[t] = additional_by_cohort[t].sum()
-        stock[t] = survivors * retention[t]
-        stock[t, ref + t] = inflows[t - 1]
-        balance[t] = (
-            stock[t - 1].sum() + inflows[t - 1] - natural[t] - additional[t] - stock[t].sum()
-        )
+    # Apply the same additional-retirement fractions in the FLODyM projection.
+    result = reconstruct(
+        years=cohorts,
+        reference_year=years[0],
+        initial=baseline.stock[0],
+        survival=survival,
+        targets=np.r_[0.0, inflows],
+        mode="inflow",
+        exit_policy="error",
+        removal_share=1 - retention[1:],
+    )
     predicted = flow_a @ inflows
     for meta, target, actual in zip(flow_metadata, flow_b, predicted, strict=True):
         meta.update(
@@ -411,7 +400,7 @@ def reconstruct_joint(
             {
                 "year": int(years[t]),
                 "target": float(stock_series[years[t]]),
-                "reconstructed": float(stock[t].sum()),
+                "reconstructed": float(result.stock[t].sum()),
             }
             for t in anchors
         ],
@@ -427,14 +416,4 @@ def reconstruct_joint(
         baseline_curvature_l2=float(np.linalg.norm(np.diff(baseline.inflow[1:], n=2))),
         fitted_curvature_l2=float(np.linalg.norm(np.diff(inflows, n=2))),
     )
-    return CohortResult(
-        years,
-        cohorts,
-        stock,
-        np.r_[np.nan, inflows],
-        natural,
-        additional,
-        balance,
-        natural_by_cohort,
-        additional_by_cohort,
-    ), diagnostics
+    return result, diagnostics

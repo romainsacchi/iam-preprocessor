@@ -11,10 +11,14 @@ from .remind_stock_inventory import build_remind_stock_inventory, write_remind_s
 from .report import ProcessingReport
 from .stock_vintages import enrich_stock_vintages, prepare_stock_vintages
 from .transport import derive_bev_truck_variables, derive_transport_energy_services
+from .vintage_inputs import annual_additions, read_iam_series
+from .vintage_reconstruction import AssetReconstruction, reconstruct_asset
 
 __all__ = [
     "ProcessingReport",
     "SecConfig",
+    "AssetReconstruction",
+    "annual_additions",
     "build_remind_stock_config",
     "build_remind_stock_inventory",
     "decrypt_file",
@@ -28,6 +32,8 @@ __all__ = [
     "prepare_message",
     "prepare_remind",
     "prepare_stock_vintages",
+    "read_iam_series",
+    "reconstruct_asset",
     "write_remind_stock_config",
     "write_remind_stock_inventory",
 ]

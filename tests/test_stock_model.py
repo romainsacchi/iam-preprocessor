@@ -1,4 +1,4 @@
-"""Analytical cases and independent stock/inflow-driven flodym comparisons."""
+"""Analytical cases and integration checks for the FLODyM stock solvers."""
 
 import numpy as np
 import pytest
@@ -29,19 +29,42 @@ def test_fixed_lifetime_replacement_and_conservation():
 
 
 @pytest.mark.parametrize("mode", ["stock", "inflow"])
-def test_against_flodym_native_dsm(mode):
+@pytest.mark.parametrize("distribution", ["fixed", "weibull"])
+def test_against_flodym_native_dsm(mode, distribution):
+    from math import gamma
+
     flodym = pytest.importorskip("flodym")
     years = list(range(2020, 2030))
     targets = np.linspace(10, 20, 10) if mode == "stock" else np.arange(1, 11, dtype=float)
     dims = flodym.DimensionSet(dim_list=[flodym.Dimension(name="time", letter="t", items=years)])
-    law = flodym.FixedLifetime(dims=dims, mean=3, inflow_at="end")
+    if distribution == "fixed":
+        law = flodym.FixedLifetime(dims=dims, mean=3, inflow_at="end")
+    else:
+        law = flodym.WeibullLifetime(
+            dims=dims, weibull_scale=3 / gamma(1.5), weibull_shape=2, inflow_at="end"
+        )
     cls = flodym.StockDrivenDSM if mode == "stock" else flodym.InflowDrivenDSM
-    native = cls(dims=dims, lifetime_model=law)
-    getattr(native, "stock" if mode == "stock" else "inflow").values[:] = targets
+    cohort = flodym.Dimension(name="cohort", letter="c", items=years)
+    native = cls(dims=dims, cohort_dim=cohort, lifetime_model=law)
+    getattr(native, "stock" if mode == "stock" else "inflow").set_values(targets)
     native.compute()
     initial = [targets[0]] + [0] * 9
-    result = run(years=years, initial=initial, targets=targets, mode=mode)
-    np.testing.assert_allclose(result.stock, native.get_stock_by_cohort())
+    survival = survival_matrix(
+        years,
+        np.full(len(years), 3),
+        distribution=distribution,
+        shape=2 if distribution == "weibull" else None,
+    )
+    result = reconstruct(
+        years=years,
+        reference_year=years[0],
+        initial=initial,
+        survival=survival,
+        targets=targets,
+        mode=mode,
+        exit_policy="error",
+    )
+    np.testing.assert_allclose(result.stock, native.get_stock_by_cohort().values)
     np.testing.assert_allclose(result.inflow[1:], native.inflow.values[1:])
     np.testing.assert_allclose(result.natural_exit[1:], native.outflow.values[1:])
 
@@ -86,11 +109,57 @@ def test_new_lifetime_applies_to_new_cohort_only():
     assert sf[5, 1] == 1
 
 
-def test_fixed_lifetime_matrix_does_not_require_flodym_runtime():
+def test_fixed_lifetime_matrix_and_shape_validation():
     sf = survival_matrix([2020, 2021, 2022], [2, 2, 2], distribution="fixed")
     np.testing.assert_array_equal(sf[:, 0], [1, 1, 0])
     with pytest.raises(DataValidationError, match="do not use a shape"):
         survival_matrix([2020, 2021], [2, 2], distribution="fixed", shape=3)
+
+
+def test_fixed_lifetime_uses_calendar_ages_with_skipped_years():
+    sf = survival_matrix([2020, 2022, 2025], [2.5, 10, 10], distribution="fixed")
+    np.testing.assert_array_equal(sf, [[1, 0, 0], [1, 1, 0], [0, 1, 1]])
+
+
+def test_stock_driven_solver_keeps_opening_cohorts_of_different_scales():
+    result = run(
+        years=list(range(2019, 2023)),
+        ref=2020,
+        initial=[1e20, 1, 0, 0],
+        targets=[1e20, 1e20, 2],
+    )
+    np.testing.assert_array_equal(result.stock[:, 1], [1, 1, 1])
+    np.testing.assert_array_equal(result.inflow[1:], [0, 1])
+    assert np.isnan(result.inflow[0])
+
+
+@pytest.mark.parametrize(
+    ("policy", "expected"), [("proportional", [2.8, 4.2]), ("oldest_first", [1.0, 6.0])]
+)
+def test_stock_driven_solver_applies_flodym_early_retirement(policy, expected, monkeypatch):
+    from flodym import StockDrivenDSM
+
+    compute = StockDrivenDSM.compute
+    behaviors = []
+
+    def record_behavior(model):
+        behaviors.append(model.negative_inflow_behavior)
+        return compute(model)
+
+    monkeypatch.setattr(StockDrivenDSM, "compute", record_behavior)
+    result = run(
+        years=[2019, 2020, 2021, 2022],
+        ref=2020,
+        initial=[4, 6, 0, 0],
+        targets=[10, 7, 8],
+        means=100,
+        exit_policy=policy,
+    )
+    assert behaviors == [{"proportional": "remove_flat", "oldest_first": "remove_oldest"}[policy]]
+    np.testing.assert_allclose(result.stock[1, :2], expected)
+    np.testing.assert_allclose(result.additional_exit_by_cohort[1, :2], [4, 6] - np.array(expected))
+    assert result.inflow[1] == pytest.approx(0)
+    assert result.inflow[2] == pytest.approx(1)
 
 
 def test_remind_maximum_lifetime_survival_and_cutoff():
@@ -189,7 +258,41 @@ def test_stock_flow_fails_instead_of_inventing_inflow_or_retiring_new_assets():
         reconstruct_stock_flow(**common, stock_targets=[10, 10], exit_policy="error")
 
 
-def test_stock_flow_hazard_weighted_and_observed_exit_allocations():
+@pytest.mark.parametrize("mode", ["stock", "stock_flow"])
+def test_flo_dym_hazard_scaling_preserves_stock_targets_and_new_additions(mode):
+    # This stock target corresponds to doubling the natural hazards: the
+    # per-cohort annual survival probabilities are squared by FLODyM.
+    common = dict(
+        years=[2019, 2020, 2021],
+        reference_year=2020,
+        initial=[4, 6, 0],
+        survival=[[1, 0, 0], [1, 1, 0], [0.5, 0.75, 1]],
+        exit_policy="remove_by_hazard",
+    )
+    if mode == "stock":
+        result = reconstruct(**common, mode="stock", targets=[10, 4.375])
+        new_additions = 0
+    else:
+        result = reconstruct_stock_flow(**common, stock_targets=[10, 5.375], inflow_targets=[0, 1])
+        new_additions = 1
+    np.testing.assert_allclose(result.stock[1], [1, 3.375, new_additions], atol=1e-10)
+    np.testing.assert_allclose(result.natural_exit_by_cohort[1], [2, 1.5, 0])
+    np.testing.assert_allclose(result.additional_exit_by_cohort[1], [1, 1.125, 0])
+    assert result.inflow[1] == pytest.approx(new_additions, abs=1e-10)
+
+
+def test_hazard_scaling_reports_infeasibility_with_zero_hazard():
+    with pytest.raises(DataValidationError, match="FLODyM hazard scaling failed"):
+        run(
+            years=[2020, 2021],
+            initial=[10, 0],
+            means=100,
+            targets=[10, 5],
+            exit_policy="remove_by_hazard",
+        )
+
+
+def test_stock_flow_observed_exit_allocation():
     years = np.arange(2019, 2022)
     sf = survival_matrix(years, np.full(3, 10), distribution="remind")
     common = dict(
@@ -200,9 +303,7 @@ def test_stock_flow_hazard_weighted_and_observed_exit_allocations():
         stock_targets=[10, 8],
         inflow_targets=[0, 0],
     )
-    weighted = reconstruct_stock_flow(**common, exit_policy="hazard_weighted")
-    assert weighted.additional_exit_by_cohort[1, 0] > weighted.additional_exit_by_cohort[1, 1]
-    required = weighted.additional_exit[1]
+    required = 5 * (sf[2, 0] / sf[1, 0] + sf[2, 1] / sf[1, 1]) - 8
     observations = np.zeros((2, 3))
     observations[1, 1] = required
     observed = reconstruct_stock_flow(**common, exit_policy="observed", observed_exits=observations)

@@ -1,8 +1,14 @@
-"""Enrich IAM tables with explicitly reconstructed stock and service vintages."""
+"""Orchestrate stock-vintage reconstruction and write its public outputs.
+
+Input interpretation lives in :mod:`vintage_inputs`; reconstruction of one
+asset lives in :mod:`vintage_reconstruction`.  This module assembles their
+results into the IAM-style compatibility table and the canonical data package.
+"""
 
 from __future__ import annotations
 
-from importlib.metadata import version
+import json
+from importlib.metadata import distribution, version
 from pathlib import Path
 
 import numpy as np
@@ -14,311 +20,29 @@ from .filtering import filter_variables
 from .io import read_frame, sha256_file, validate_frame, write_csv_atomic, year_columns
 from .report import ProcessingReport
 from .stock_config import load_stock_config
-from .stock_model import reconstruct, reconstruct_stock_flow, survival_matrix
 from .stock_package import write_vintage_package
+from .vintage_inputs import (
+    annual_additions,
+    annualize_source_table,
+    interpolate_annual,
+    read_iam_series,
+    read_initial_cohorts,
+)
+from .vintage_reconstruction import reconstruct_asset
 
 PREFIX = "Stock Vintage|v1|"
 
-
-def _series(frame, region, specification):
-    selected = frame.loc[
-        frame["Region"].eq(region) & frame["Variable"].eq(specification["variable"])
-    ]
-    if len(selected) != 1 or selected.iloc[0]["Unit"] != specification["unit"]:
-        raise DataValidationError(
-            f"Expected a unique exact variable/unit: {region}/{specification}"
-        )
-    labels = year_columns(frame)
-    try:
-        values = pd.to_numeric(selected.iloc[0][labels], errors="raise").to_numpy(float)
-    except (ValueError, TypeError) as exc:
-        raise DataValidationError(f"Non-numeric IAM series: {specification}") from exc
-    if not np.isfinite(values).all() or (values < 0).any():
-        raise DataValidationError(f"Missing, negative or nonfinite IAM series: {specification}")
-    return dict(zip(map(int, labels), values, strict=True))
-
-
-def interpolate(series, years):
-    """Linear annual level/sample interpolation; never extrapolate."""
-    anchors = sorted(series)
-    if min(years) < anchors[0] or max(years) > anchors[-1]:
-        raise DataValidationError("Requested years require extrapolation beyond IAM anchors.")
-    return np.interp(years, anchors, [series[y] for y in anchors])
-
-
-def annual_inflows(series, years, timing):
-    """Expand reported average rates using explicit, non-overlapping windows."""
-    if timing["kind"] == "sampled_annual":
-        return interpolate(series, years)
-    rates = {}
-    anchors_seen = set()
-    for period in timing["periods"]:
-        anchor = period["anchor"]
-        if anchor not in series or anchor in anchors_seen:
-            raise DataValidationError("Reporting periods need unique existing IAM anchors.")
-        anchors_seen.add(anchor)
-        for year in range(period["start"], period["end"] + 1):
-            if year in rates:
-                raise DataValidationError(f"Overlapping reporting periods in {year}.")
-            rates[year] = series[anchor]
-    missing = set(years) - rates.keys()
-    if missing:
-        raise DataValidationError(f"Reporting windows do not cover years: {sorted(missing)}")
-    return np.array([rates[y] for y in years], dtype=float)
-
-
-def _observations(initial, reference_year):
-    if initial["kind"] in {"equilibrium", "warm_start"}:
-        opening = initial.get("base_year", reference_year)
-        return None, opening - initial["maximum_age"]
-    try:
-        observed = pd.read_csv(initial["file"])
-        if set(observed.columns) - {"cohort", "amount", "service_factor"}:
-            raise ValueError("Unexpected observation columns")
-        values = observed[["cohort", "amount"]].to_numpy(float)
-        if not np.isfinite(values).all() or (values[:, 1] < 0).any():
-            raise ValueError("Invalid observed quantities")
-        cohorts = values[:, 0]
-        if (
-            len(cohorts) == 0
-            or len(set(cohorts)) != len(cohorts)
-            or (cohorts != cohorts.astype(int)).any()
-            or (cohorts > reference_year).any()
-            or (cohorts < reference_year - 150).any()
-            or values[:, 1].sum() <= 0
-        ):
-            raise ValueError("Invalid cohort years or zero total")
-        observed["cohort"] = cohorts.astype(int)
-    except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise DataValidationError(f"Invalid cohort observations: {initial['file']}: {exc}") from exc
-    return observed, int(cohorts.min())
+# Compatibility names retained for existing notebooks and downstream imports.
+_series = read_iam_series
+interpolate = interpolate_annual
+annual_inflows = annual_additions
+_observations = read_initial_cohorts
+_annualize_originals = annualize_source_table
 
 
 def _asset_result(frame, asset, reference_year, end_year):
-    requested_end = end_year
-    stock_series = _series(frame, asset["region"], asset["stock"])
-    flow_series = _series(frame, asset["region"], asset["inflow"])
-    if asset["mode"] == "joint":
-        from .stock_annualisation import joint_horizon
-
-        end_year = joint_horizon(stock_series, reference_year, end_year, asset["inflow_timing"])
-    observed, first = _observations(asset["initial"], reference_year)
-    opening_year = asset["initial"].get("base_year", reference_year)
-    years = np.arange(first, end_year + 1)
-    service_years = np.arange(reference_year, end_year + 1)
-    ref = reference_year - first
-    opening = opening_year - first
-    stock_targets = interpolate(stock_series, service_years)
-    if stock_targets[0] == 0 and observed is not None:
-        raise DataValidationError(
-            "Observed opening composition cannot initialize a zero regional stock."
-        )
-    # The reference stock is an initial condition, not the reference year's inflow.
-    flows = np.r_[
-        0.0,
-        annual_inflows(
-            flow_series,
-            service_years[1:],
-            asset["inflow_timing"],
-        ),
-    ]
-    lifetime = asset["lifetime"]
-    parameter = "maximum" if lifetime["distribution"] == "remind" else "mean"
-    initial_parameter = f"initial_{parameter}"
-    lifetimes = np.full(len(years), float(lifetime[initial_parameter]))
-    lifetimes[opening + 1 :] = (
-        interpolate(_series(frame, asset["region"], lifetime["source"]), years[opening + 1 :])
-        if "source" in lifetime
-        else lifetime[parameter]
-    )
-    sf = survival_matrix(
-        years.tolist(),
-        lifetimes,
-        distribution=lifetime["distribution"],
-        shape=lifetime.get("shape"),
-        conditional_year=opening_year if observed is not None else None,
-    )
-    initial = np.zeros(len(years))
-    factors = np.ones(len(years))
-    weighting = asset["service_weighting"]
-    if observed is None:
-        initial[: opening + 1] = sf[opening, : opening + 1]
-    else:
-        positions = observed["cohort"].to_numpy(int) - first
-        initial[positions] = observed["amount"].to_numpy(float)
-        if weighting["kind"] == "observed_factors":
-            if "service_factor" not in observed:
-                raise DataValidationError("Observation CSV is missing service_factor.")
-            factors[:] = weighting["future_factor"]
-            try:
-                factors[positions] = observed["service_factor"].to_numpy(float)
-            except (ValueError, TypeError) as exc:
-                raise DataValidationError("Non-numeric observed service factors.") from exc
-    if not np.isfinite(factors).all() or (factors < 0).any():
-        raise DataValidationError("Service factors must be finite and nonnegative.")
-    opening_stock = interpolate(stock_series, [opening_year])[0]
-    if opening_stock > 0:
-        initial *= opening_stock / initial.sum()
-    else:
-        initial[:] = 0
-    if opening_year < reference_year:
-        warm_years = np.arange(opening_year, reference_year + 1)
-        warm_targets = interpolate(stock_series, warm_years)
-        warm_flows = np.r_[
-            0.0,
-            annual_inflows(flow_series, warm_years[1:], asset["inflow_timing"]),
-        ]
-        warm = reconstruct_stock_flow(
-            years=years[: ref + 1],
-            reference_year=opening_year,
-            initial=initial[: ref + 1],
-            survival=sf[: ref + 1, : ref + 1],
-            stock_targets=warm_targets,
-            inflow_targets=warm_flows,
-            exit_policy=asset["exit_policy"],
-        )
-        initial[:] = 0
-        initial[: ref + 1] = warm.stock[-1]
-    if asset["mode"] == "stock_flow":
-        result = reconstruct_stock_flow(
-            years=years,
-            reference_year=reference_year,
-            initial=initial,
-            survival=sf,
-            stock_targets=stock_targets,
-            inflow_targets=flows,
-            exit_policy=asset["exit_policy"],
-        )
-    else:
-        result = reconstruct(
-            years=years,
-            reference_year=reference_year,
-            initial=initial,
-            survival=sf,
-            targets=flows if asset["mode"] == "inflow" else stock_targets,
-            mode="inflow" if asset["mode"] == "inflow" else "stock",
-            exit_policy="proportional" if asset["mode"] == "joint" else asset["exit_policy"],
-        )
-    joint_diagnostics = None
-    if asset["mode"] == "joint":
-        from .stock_annualisation import reconstruct_joint
-
-        result, joint_diagnostics = reconstruct_joint(
-            baseline=result,
-            survival=sf,
-            stock_series=stock_series,
-            flow_series=flow_series,
-            timing=asset["inflow_timing"],
-            reference_inflows=flows,
-            exit_policy=asset["exit_policy"],
-            options={
-                k: asset["annualisation"][k]
-                for k in ("inflow_constraints", "reference_weight", "inflow_weight")
-            },
-        )
-    ageing = np.maximum(0, service_years[:, None] - np.maximum(reference_year, years)[None, :])
-    service = result.stock * factors[None, :] * np.exp(-weighting["annual_age_decay"] * ageing)
-    if weighting["kind"] == "age_profile":
-        from .stock_usage import age_factors
-
-        service = result.stock * age_factors(weighting["age_profile_file"], service_years, years)
-    for i, year in enumerate(service_years[1:], start=1):
-        service[i, year - first] *= weighting.get("new_cohort_exposure", 1.0)
-    total = result.stock.sum(axis=1)
-    stock_shares = np.divide(
-        result.stock, total[:, None], out=np.zeros_like(result.stock), where=total[:, None] > 0
-    )
-    service_sum = service.sum(axis=1)
-    service_shares = np.divide(
-        service, service_sum[:, None], out=np.zeros_like(service), where=service_sum[:, None] > 0
-    )
-    service_target = None
-    if "service" in asset:
-        service_target = interpolate(
-            _series(frame, asset["region"], asset["service"]), service_years
-        )
-        if ((service_target > 0) & (service_sum <= 0)).any():
-            raise DataValidationError(
-                "Positive IAM service cannot be supplied by zero serving stock."
-            )
-        service_shares[service_target == 0] = 0
-        if "maximum_service_per_stock" in weighting:
-            service_per_stock = np.divide(
-                service_shares * service_target[:, None],
-                result.stock,
-                out=np.zeros_like(service),
-                where=result.stock > 0,
-            )
-            invalid = (service_per_stock > weighting["maximum_service_per_stock"] * (1 + 1e-10)) & (
-                service_years[:, None] <= requested_end
-            )
-            if invalid.any():
-                t, c = np.argwhere(invalid)[0]
-                raise DataValidationError(
-                    "Modelled cohort service exceeds the declared per-stock bound: "
-                    f"year={service_years[t]}, cohort={years[c]}, "
-                    f"value={service_per_stock[t, c]:.8g}, "
-                    f"bound={weighting['maximum_service_per_stock']:.8g}."
-                )
-    implied_exit = np.r_[np.nan, stock_targets[:-1] + flows[1:] - stock_targets[1:]]
-    if end_year != requested_end:
-        # Full reporting windows are fitted before trimming public coverage. Do not
-        # silently interpret a partial window as a smaller observed period total.
-        count, cohort_count = requested_end - reference_year + 1, requested_end - first + 1
-        result.years = result.years[:count]
-        result.cohorts = result.cohorts[:cohort_count]
-        result.stock = result.stock[:count, :cohort_count]
-        for name in ("inflow", "natural_exit", "additional_exit", "balance"):
-            setattr(result, name, getattr(result, name)[:count])
-        stock_shares, service_shares = (
-            array[:count, :cohort_count] for array in (stock_shares, service_shares)
-        )
-        stock_targets, flows, implied_exit = (
-            array[:count] for array in (stock_targets, flows, implied_exit)
-        )
-        if service_target is not None:
-            service_target = service_target[:count]
-    basis_by_cohort = np.array(
-        [
-            "iam_addition"
-            if cohort > opening_year
-            else "observed"
-            if observed is not None
-            else "prior"
-            for cohort in result.cohorts
-        ],
-        dtype=object,
-    )
-    return (
-        result,
-        stock_shares,
-        service_shares,
-        stock_targets,
-        flows,
-        implied_exit,
-        service_target,
-        joint_diagnostics,
-        basis_by_cohort,
-    )
-
-
-def _annualize_originals(frame, added_years):
-    """Fill only new columns so annual enrichment does not create holes in IAM data."""
-    anchors = list(map(int, year_columns(frame)))
-    additions = {}
-    for year in added_years:
-        if str(year) in frame.columns:
-            continue
-        lo, hi = max(y for y in anchors if y < year), min(y for y in anchors if y > year)
-        try:
-            lower = pd.to_numeric(frame[str(lo)], errors="raise")
-            upper = pd.to_numeric(frame[str(hi)], errors="raise")
-        except (TypeError, ValueError) as exc:
-            raise DataValidationError(
-                "Cannot interpolate non-numeric original IAM variables."
-            ) from exc
-        additions[str(year)] = lower + (upper - lower) * (year - lo) / (hi - lo)
-    return pd.concat([frame, pd.DataFrame(additions, index=frame.index)], axis=1)
+    """Compatibility wrapper for the former tuple-returning private helper."""
+    return reconstruct_asset(frame, asset, reference_year, end_year).as_legacy_tuple()
 
 
 def enrich_stock_vintages(frame, config, *, return_v2=False, include_v1=True):
@@ -337,19 +61,18 @@ def enrich_stock_vintages(frame, config, *, return_v2=False, include_v1=True):
     rows, diagnostics, v2_rows = [], [], []
     for asset in config["assets"]:
         try:
-            (
-                result,
-                shares,
-                service_shares,
-                targets,
-                flows,
-                implied,
-                service_target,
-                joint_diagnostics,
-                basis_by_cohort,
-            ) = _asset_result(frame, asset, ref, end)
+            reconstruction = reconstruct_asset(frame, asset, ref, end)
         except DataValidationError as exc:
             raise DataValidationError(f"{asset['id']}/{asset['region']}: {exc}") from exc
+        result = reconstruction.cohorts
+        shares = reconstruction.stock_shares
+        service_shares = reconstruction.service_shares
+        targets = reconstruction.stock_targets
+        flows = reconstruction.reported_additions
+        implied = reconstruction.implied_exit
+        service_target = reconstruction.service_target
+        joint_diagnostics = reconstruction.annualisation
+        basis_by_cohort = reconstruction.evidence_basis
         prefix = PREFIX + asset["id"] + "|"
         stock_unit = asset["stock"]["unit"]
 
@@ -558,6 +281,8 @@ def prepare_stock_vintages(
     enriched, diagnostics, v2 = enrich_stock_vintages(
         frame, config, return_v2=True, include_v1=not package_only
     )
+    flodym = distribution("flodym")
+    flodym_origin = json.loads(flodym.read_text("direct_url.json") or "{}")
     report = ProcessingReport(
         model=config["model"],
         input_path=str(source.resolve()),
@@ -573,15 +298,19 @@ def prepare_stock_vintages(
             "reference_year": config["reference_year"],
             "end_year": config["end_year"],
             "config_sha256": sha256_file(config_path),
-            "flodym_version": version("flodym"),
+            "flodym_version": flodym.version,
+            "flodym_commit": flodym_origin.get("vcs_info", {}).get("commit_id"),
             "software_versions": {
                 name: version(name)
-                for name in ("iam-preprocessor", "flodym", "numpy", "pandas", "scipy")
+                for name in ("iam-preprocessor", "flodym", "numpy", "pandas", "scipy", "osqp")
             },
             "implementation_sha256": {
                 name: sha256_file(Path(__file__).with_name(name))
                 for name in (
                     "stock_vintages.py",
+                    "vintage_inputs.py",
+                    "vintage_reconstruction.py",
+                    "flodym_stock.py",
                     "stock_model.py",
                     "stock_config.py",
                     "stock_usage.py",
@@ -617,8 +346,8 @@ def prepare_stock_vintages(
             )
         if d["total_additional_exits"] > 0:
             report.warnings.append(
-                f"{d['asset']}/{d['region']}: proportional additional exits "
-                "were assumed; these are not observed physical disposal."
+                f"{d['asset']}/{d['region']}: additional exits follow the configured "
+                f"{d['configuration']['exit_policy']} policy. Physical disposal is unobserved."
             )
     if filter_output:
         enriched = filter_variables(enriched)

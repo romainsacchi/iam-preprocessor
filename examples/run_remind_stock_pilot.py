@@ -23,7 +23,8 @@ import yaml
 from iam_preprocessor.exceptions import DataValidationError
 from iam_preprocessor.io import read_frame, sha256_file
 from iam_preprocessor.stock_config import load_stock_config
-from iam_preprocessor.stock_vintages import PREFIX, _asset_result, prepare_stock_vintages
+from iam_preprocessor.stock_vintages import PREFIX, prepare_stock_vintages
+from iam_preprocessor.vintage_reconstruction import reconstruct_asset
 
 FILES = {
     "passenger-bev": "bev-npi2025-cohorts.json",
@@ -299,7 +300,7 @@ def record_rejected_sensitivities(source, config_path, *, primary_ids=None):
     rejected = []
     for asset in config["assets"]:
         try:
-            _asset_result(frame, asset, config["reference_year"], config["end_year"])
+            reconstruct_asset(frame, asset, config["reference_year"], config["end_year"])
         except DataValidationError as exc:
             service_bound_failure = "service exceeds the declared per-stock bound" in str(exc)
             if asset["id"] in primary_ids or not service_bound_failure:

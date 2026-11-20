@@ -147,10 +147,10 @@ def load_stock_config(path):
             "error",
             "proportional",
             "oldest_first",
-            "hazard_weighted",
+            "remove_by_hazard",
         ):
             raise DataValidationError(
-                "exit_policy must be error, proportional, oldest_first or hazard_weighted."
+                "exit_policy must be error, proportional, oldest_first or remove_by_hazard."
             )
         if asset["mode"] == "inflow" and asset["exit_policy"] != "error":
             raise DataValidationError(

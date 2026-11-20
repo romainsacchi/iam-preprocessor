@@ -25,7 +25,8 @@ from iam_preprocessor.stock_observations import (
     model_observation,
     read_eia_generators,
 )
-from iam_preprocessor.stock_vintages import _series, prepare_stock_vintages
+from iam_preprocessor.stock_vintages import prepare_stock_vintages
+from iam_preprocessor.vintage_inputs import read_iam_series
 
 # Exact leaf selectors: aggregate parents and children must never be added together.
 POWER = {
@@ -124,9 +125,9 @@ def make_expanded_config(archive, output, end_year=2050):
             service_text = "Equal annual service per vehicle; age-specific mileage unavailable."
             observation_source = "veh1111.ods"
         for role in ("stock", "inflow", "service"):
-            _series(frame, base["region"], base[role])
+            read_iam_series(frame, base["region"], base[role])
         if power:
-            _series(frame, base["region"], base["lifetime"]["source"])
+            read_iam_series(frame, base["region"], base["lifetime"]["source"])
         file = output / f"{asset}-initial.csv"
         pd.DataFrame(model_observation(record)).to_csv(file, index=False)
         base["initial"] = {
@@ -145,7 +146,7 @@ def make_expanded_config(archive, output, end_year=2050):
         if power:
             base["service_weighting"]["maximum_service_per_stock"] = 0.031536
         bases[asset] = base
-        stock_series = _series(frame, base["region"], base["stock"])
+        stock_series = read_iam_series(frame, base["region"], base["stock"])
         initial_stock = float(np.interp(2022, list(stock_series), list(stock_series.values())))
         observed_native_units = record["total"] / (1000 if power else 1e6)
         audit["assets"][asset] = dict(

@@ -13,12 +13,8 @@ from iam_preprocessor.exceptions import DataValidationError, IamPreprocessorErro
 from iam_preprocessor.filtering import filter_variables
 from iam_preprocessor.io import read_frame, sha256_file
 from iam_preprocessor.stock_config import load_stock_config
-from iam_preprocessor.stock_vintages import (
-    PREFIX,
-    annual_inflows,
-    enrich_stock_vintages,
-    prepare_stock_vintages,
-)
+from iam_preprocessor.stock_vintages import PREFIX, enrich_stock_vintages, prepare_stock_vintages
+from iam_preprocessor.vintage_inputs import annual_additions
 
 
 @pytest.fixture
@@ -169,19 +165,19 @@ def test_period_rates_preserve_integrals_and_support_irregular_explicit_windows(
             {"anchor": 2070, "start": 2063, "end": 2072},
         ],
     }
-    rates = annual_inflows({2060: 2, 2070: 3}, range(2058, 2073), timing)
+    rates = annual_additions({2060: 2, 2070: 3}, range(2058, 2073), timing)
     assert sum(rates[:5]) == 10
     assert sum(rates[5:]) == 30
     with pytest.raises(DataValidationError, match="cover"):
-        annual_inflows({2060: 2, 2070: 3}, range(2057, 2073), timing)
+        annual_additions({2060: 2, 2070: 3}, range(2057, 2073), timing)
     timing["periods"][1]["start"] = 2062
     with pytest.raises(DataValidationError, match="Overlapping"):
-        annual_inflows({2060: 2, 2070: 3}, range(2058, 2073), timing)
+        annual_additions({2060: 2, 2070: 3}, range(2058, 2073), timing)
 
 
 def test_sampled_sales_interpolation_does_not_claim_period_integral():
     np.testing.assert_allclose(
-        annual_inflows({2020: 1, 2025: 6}, [2021, 2022], {"kind": "sampled_annual"}), [2, 3]
+        annual_additions({2020: 1, 2025: 6}, [2021, 2022], {"kind": "sampled_annual"}), [2, 3]
     )
 
 
@@ -219,6 +215,8 @@ def test_filter_encrypt_and_cli_roundtrip(inputs, tmp_path):
         == (tmp_path / "out" / (source.stem + "_stock_vintages.csv")).read_bytes()
     )
     assert report["assumptions"]["origin"] == "reconstructed_not_native"
+    assert report["assumptions"]["software_versions"]["flodym"] == "1.1.0"
+    assert "flodym_stock.py" in report["assumptions"]["implementation_sha256"]
     package = tmp_path / "out" / f"{source.stem}_stock_vintages_v2"
     manifest = json.loads((package / "datapackage.json").read_text())
     vintages = pd.read_parquet(package / "vintages.parquet")
@@ -297,12 +295,13 @@ def test_rejects_bad_configuration(inputs, problem):
         load_stock_config(path)
 
 
-def test_joint_mode_rejects_unimplemented_cohort_exit_allocations(inputs):
+@pytest.mark.parametrize("policy", ["oldest_first", "remove_by_hazard"])
+def test_joint_mode_rejects_unimplemented_cohort_exit_allocations(inputs, policy):
     _, config, path, _ = inputs
     asset = config["assets"][0]
     asset.update(
         mode="joint",
-        exit_policy="oldest_first",
+        exit_policy=policy,
         annualisation={
             "inflow_constraints": "penalized",
             "reference_weight": 0.01,
@@ -312,6 +311,17 @@ def test_joint_mode_rejects_unimplemented_cohort_exit_allocations(inputs):
     )
     path.write_text(yaml.safe_dump(config))
     with pytest.raises(DataValidationError, match="Joint mode supports"):
+        load_stock_config(path)
+
+
+def test_hazard_exit_configuration_requires_flodym_policy_name(inputs):
+    _, config, path, _ = inputs
+    config["assets"][0]["exit_policy"] = "remove_by_hazard"
+    path.write_text(yaml.safe_dump(config))
+    assert load_stock_config(path)["assets"][0]["exit_policy"] == "remove_by_hazard"
+    config["assets"][0]["exit_policy"] = "hazard_weighted"
+    path.write_text(yaml.safe_dump(config))
+    with pytest.raises(DataValidationError, match="remove_by_hazard"):
         load_stock_config(path)
 
 

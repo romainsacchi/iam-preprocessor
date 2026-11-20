@@ -1,4 +1,4 @@
-"""Annual cohort accounting using explicit lifetime survival matrices.
+"""Annual cohort accounting with FLODyM and explicit IAM retirement rules.
 
 Observed initial cohorts are surviving stock, not historical inflows. Their
 future survival is conditional on being present at the reference year.
@@ -29,10 +29,10 @@ class CohortResult:
     additional_exit_by_cohort: np.ndarray | None = None
 
 
-EXIT_POLICIES = {"error", "proportional", "oldest_first", "hazard_weighted", "observed"}
+EXIT_POLICIES = {"error", "proportional", "oldest_first", "remove_by_hazard", "observed"}
 
 
-def _allocate_additional_exit(amount, survivors, policy, *, hazard=None, observed=None):
+def _allocate_additional_exit(amount, survivors, policy, *, observed=None):
     """Allocate an additional exit without retiring the current year's entries."""
     tolerance = 1e-10 * max(1.0, float(survivors.sum()))
     if amount <= tolerance:
@@ -66,18 +66,9 @@ def _allocate_additional_exit(amount, survivors, policy, *, hazard=None, observe
             if remaining <= tolerance:
                 break
         return allocated
-    weights = survivors.copy()
-    if policy == "hazard_weighted":
-        if hazard is None:
-            raise DataValidationError("Hazard-weighted exits require cohort hazards.")
-        weights *= np.asarray(hazard, dtype=float)
-        if weights.sum() <= tolerance:
-            raise DataValidationError(
-                "Hazard-weighted exits are undefined when all hazards are zero."
-            )
-    if policy != "proportional" and policy != "hazard_weighted":
+    if policy != "proportional":
         raise DataValidationError(f"Unknown additional-exit policy: {policy}")
-    return amount * weights / weights.sum()
+    return amount * survivors / survivors.sum()
 
 
 def survival_matrix(years, lifetimes, *, distribution, shape=None, conditional_year=None):
@@ -96,6 +87,8 @@ def survival_matrix(years, lifetimes, *, distribution, shape=None, conditional_y
     REMIND energy-conversion lifetimes are maximum lifetimes ``tau``, with
     survival ``max(0, 1 - (age / tau) ** 4)`` and mean ``4 * tau / 5``.
     """
+    from .flodym_stock import lifetime_survival
+
     lifetimes = np.asarray(lifetimes, dtype=float)
     if (
         lifetimes.shape != (len(years),)
@@ -105,28 +98,16 @@ def survival_matrix(years, lifetimes, *, distribution, shape=None, conditional_y
         raise DataValidationError(
             "Lifetime parameters must be finite, positive and cohort-specific."
         )
-    dates = np.asarray(years)
+    dates = np.asarray(years, dtype=int)
     if distribution == "weibull" and (shape is None or not np.isfinite(shape) or shape <= 0):
         raise DataValidationError("Weibull shape must be finite and positive.")
     if distribution not in {"fixed", "weibull", "remind"}:
         raise DataValidationError("Lifetime distribution must be fixed, weibull or remind.")
-    if distribution == "remind":
-        if shape is not None:
-            raise DataValidationError("REMIND maximum lifetimes do not use a shape parameter.")
-        age = np.maximum(0, dates[:, None] - dates[None, :])
-        sf = np.maximum(0, 1 - (age / lifetimes[None, :]) ** 4)
-        sf *= dates[:, None] >= dates[None, :]
-    elif distribution == "fixed":
-        if shape is not None:
-            raise DataValidationError("Fixed lifetimes do not use a shape parameter.")
-        age = np.maximum(0, dates[:, None] - dates[None, :])
-        sf = (age < lifetimes[None, :]) * (dates[:, None] >= dates[None, :])
-        sf = sf.astype(float)
-    else:
-        scale = lifetimes / gamma(1 + 1 / shape)
-        age = np.maximum(0, dates[:, None] - dates[None, :])
-        sf = np.exp(-((age / scale[None, :]) ** shape))
-        sf *= dates[:, None] >= dates[None, :]
+    if distribution == "remind" and shape is not None:
+        raise DataValidationError("REMIND maximum lifetimes do not use a shape parameter.")
+    if distribution == "fixed" and shape is not None:
+        raise DataValidationError("Fixed lifetimes do not use a shape parameter.")
+    sf = lifetime_survival(dates, lifetimes, distribution, shape)
     if conditional_year is not None:
         if conditional_year not in years:
             raise DataValidationError("Conditional survival year must be in the model years.")
@@ -139,10 +120,8 @@ def survival_matrix(years, lifetimes, *, distribution, shape=None, conditional_y
             sf[:, initial] = np.exp(-hazard) * (dates[:, None] >= dates[None, initial])
         elif distribution == "remind":
             initial = dates <= conditional_year
-            ages = np.maximum(0, dates[:, None] - dates[None, initial])
-            reference_ages = conditional_year - dates[initial]
-            raw = np.maximum(0, 1 - (ages / lifetimes[None, initial]) ** 4)
-            reference = np.maximum(0, 1 - (reference_ages / lifetimes[initial]) ** 4)
+            raw = sf[:, initial]
+            reference = raw[list(years).index(conditional_year)]
             conditional = np.divide(
                 raw,
                 reference[None, :],
@@ -159,13 +138,18 @@ def survival_matrix(years, lifetimes, *, distribution, shape=None, conditional_y
     return sf
 
 
-def reconstruct(*, years, reference_year, initial, survival, targets, mode, exit_policy):
+def reconstruct(
+    *, years, reference_year, initial, survival, targets, mode, exit_policy, removal_share=None
+):
     """Evolve an initialized stock using a configured survival matrix.
 
     ``targets`` means closing stocks in stock mode and annual entries in inflow
-    mode. Proportional additional exits are an explicit stock-mode assumption.
+    mode. For an inflow projection, ``removal_share`` sets annual proportional
+    additional retirement after the reference year.
     No negative inflow is silently clipped, and no balancing imports are inferred.
     """
+    from .flodym_stock import solve_from_survival
+
     years = np.asarray(years, dtype=int)
     initial = np.asarray(initial, dtype=float)
     survival = np.asarray(survival, dtype=float)
@@ -194,13 +178,71 @@ def reconstruct(*, years, reference_year, initial, survival, targets, mode, exit
         )
     if mode not in {"stock", "inflow"} or exit_policy not in EXIT_POLICIES - {"observed"}:
         raise DataValidationError("Unknown reconstruction mode or exit policy.")
+    if mode == "stock" and not np.isclose(initial.sum(), targets[0], rtol=1e-10, atol=1e-12):
+        raise DataValidationError("Initial stock does not match the reference target.")
+
+    model = solve_from_survival(
+        years, ref, initial, survival, targets, mode, exit_policy, removal_share
+    )
+    if model is not None:
+        stock = model.get_stock_by_cohort().values[ref:n, :n]
+        inflow = np.r_[np.nan, model.inflow.values[ref + 1 : n]]
+        balance = np.r_[np.nan, model.get_mass_balance().values[ref + 1 : n]]
+        natural_by_cohort = model.get_outflow_by_cohort().values[ref:n, :n].copy()
+        natural_by_cohort[0] = np.nan
+        additional_by_cohort = np.zeros_like(stock)
+        additional_by_cohort[0] = np.nan
+        if removal_share is not None or (mode == "stock" and exit_policy != "error"):
+            previous = survival[ref:-1]
+            ratio = np.divide(
+                survival[ref + 1 :], previous, out=np.zeros_like(previous), where=previous > 0
+            )
+            survivors = stock[:-1] * ratio
+            natural_by_cohort[1:] = stock[:-1] - survivors
+            additional_by_cohort[1:] = (
+                survivors * removal_share[:, None]
+                if removal_share is not None
+                else np.maximum(0, survivors - stock[1:])
+            )
+        natural = natural_by_cohort.sum(axis=1)
+        additional = additional_by_cohort.sum(axis=1)
+        if not np.allclose(balance[1:], 0, rtol=0, atol=1e-10 * max(1, stock.max())):
+            raise DataValidationError("Cohort stock balance did not close.")
+        return CohortResult(
+            years[ref:],
+            years,
+            stock,
+            inflow,
+            natural,
+            additional,
+            balance,
+            natural_by_cohort,
+            additional_by_cohort,
+        )
+
+    # Apply the error policy's tolerance for a negative addition.
+    return reconstruct_stock_path(years, ref, initial, survival, targets, exit_policy)
+
+
+def reconstruct_stock_path(years, ref, initial, survival, targets, exit_policy):
+    """Apply the IAM exit policies to a validated annual closing-stock path.
+
+    Joint annualisation uses this calculation for its reference additions and
+    retirement fractions so the inputs to the fit keep their numerical precision.
+    ``ref`` is the index of the reference year in the complete cohort axis.
+    """
+    n = len(years)
+    if not np.isclose(initial.sum(), targets[0], rtol=1e-10, atol=1e-12):
+        raise DataValidationError("Initial stock does not match the reference target.")
+    if np.any((initial > 0) & (survival[ref] <= 0)):
+        raise DataValidationError(
+            "Initial stock contains cohorts impossible under the lifetime law."
+        )
     stock = np.zeros((n - ref, n))
     stock[0] = initial
     inflow, natural, additional, balance = [np.full(n - ref, np.nan) for _ in range(4)]
     natural_by_cohort = np.full_like(stock, np.nan)
     additional_by_cohort = np.full_like(stock, np.nan)
-    if mode == "stock" and not np.isclose(initial.sum(), targets[0], rtol=1e-10, atol=1e-12):
-        raise DataValidationError("Initial stock does not match the reference target.")
     for i in range(ref + 1, n):
         j = i - ref
         ratio = np.divide(survival[i], survival[i - 1], out=np.zeros(n), where=survival[i - 1] > 0)
@@ -209,23 +251,19 @@ def reconstruct(*, years, reference_year, initial, survival, targets, mode, exit
         natural[j] = natural_by_cohort[j].sum()
         additional[j] = 0.0
         additional_by_cohort[j] = 0.0
-        if mode == "inflow":
-            inflow[j] = targets[j]
+        change = targets[j] - survivors.sum()
+        if change < 0:
+            allocated = _allocate_additional_exit(
+                -change,
+                survivors,
+                exit_policy,
+            )
+            additional_by_cohort[j] = allocated
+            additional[j] = allocated.sum()
+            survivors -= allocated
+            inflow[j] = 0.0
         else:
-            change = targets[j] - survivors.sum()
-            if change < 0:
-                allocated = _allocate_additional_exit(
-                    -change,
-                    survivors,
-                    exit_policy,
-                    hazard=1 - ratio,
-                )
-                additional_by_cohort[j] = allocated
-                additional[j] = allocated.sum()
-                survivors -= allocated
-                inflow[j] = 0.0
-            else:
-                inflow[j] = change
+            inflow[j] = change
         survivors[i] = inflow[j]
         stock[j] = survivors
         balance[j] = stock[j - 1].sum() + inflow[j] - natural[j] - additional[j] - stock[j].sum()
@@ -317,13 +355,29 @@ def reconstruct_stock_flow(
                 f"by {-required_exit:g}; a closed stock-flow model cannot balance it."
             )
         required_exit = max(0.0, required_exit)
-        allocated = _allocate_additional_exit(
-            required_exit,
-            survivors,
-            exit_policy,
-            hazard=1 - ratio,
-            observed=None if observations is None else observations[row],
-        )
+        if exit_policy == "remove_by_hazard" and required_exit > 1e-10 * max(1, survivors.sum()):
+            from .flodym_stock import retire_by_hazard
+
+            # Reserve this year's additions and give FLODyM the target for the older cohorts.
+            older_target = stock_targets[row] - inflow[row]
+            if older_target < -tolerance:
+                raise DataValidationError(
+                    "Additional exits exceed the naturally surviving opening stock."
+                )
+            remaining = retire_by_hazard(
+                years[: i + 1],
+                stock[row - 1, : i + 1],
+                survival[: i + 1, : i + 1],
+                max(0, older_target),
+            )
+            allocated = np.maximum(0, survivors - np.pad(remaining, (0, n - i - 1)))
+        else:
+            allocated = _allocate_additional_exit(
+                required_exit,
+                survivors,
+                exit_policy,
+                observed=None if observations is None else observations[row],
+            )
         additional_by_cohort[row] = allocated
         additional[row] = allocated.sum()
         stock[row] = survivors - allocated

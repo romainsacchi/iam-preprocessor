@@ -32,7 +32,9 @@ from iam_preprocessor.stock_history import (
 from iam_preprocessor.stock_observations import curate_vehicle_history
 from iam_preprocessor.stock_service import audit_service, read_generation
 from iam_preprocessor.stock_validation import conditional_history, opening_survival, score_cohorts
-from iam_preprocessor.stock_vintages import _asset_result, _series, prepare_stock_vintages
+from iam_preprocessor.stock_vintages import prepare_stock_vintages
+from iam_preprocessor.vintage_inputs import read_iam_series
+from iam_preprocessor.vintage_reconstruction import reconstruct_asset
 
 
 def save(path, data):
@@ -319,7 +321,7 @@ def audit_sources(files, output, campaign):
     history = curate_vehicle_history(files["veh1111.ods"])
     comparisons, boundaries, selections = [], [], []
     for asset, m in mappings.items():
-        series = _series(frame, m["region"], m["stock"])
+        series = read_iam_series(frame, m["region"], m["stock"])
         for y in (2020, 2021, 2022):
             if m["kind"] == "power":
                 selected, ledger = select_snapshot(panels[y], m)
@@ -465,7 +467,7 @@ def configure(files, baseline, output, decisions, curves):
             )
             d["default_eligible_by_coverage"] = False
         try:
-            _asset_result(frame, case, config["reference_year"], config["end_year"])
+            reconstruct_asset(frame, case, config["reference_year"], config["end_year"])
         except DataValidationError as exc:
             d.update(
                 physical_check_pending=False,
