@@ -216,6 +216,14 @@ Tests use small made-up datasets. The repository excludes private input files,
 generated results, and encryption keys. Use `--overwrite` to replace existing
 outputs.
 
+## Authors
+
+- Romain Sacchi (PSI) [@romainsacchi](https://github.com/romainsacchi)
+- Jakob Dürrwächter (PIK) [@JakobBD](https://github.com/JakobBD)
+- David Bantje (PIK) [@dbantje](https://github.com/dbantje)
+
+## License
+
 The project uses the BSD 3-Clause License.
 
 [premise]: https://github.com/polca/premise
