@@ -101,17 +101,15 @@ def stock_config_command(
     source: Path = typer.Argument(..., exists=True, readable=True, dir_okay=False),
     destination: Path = typer.Option(..., "--output", "-o", dir_okay=False),
     mapping: Path = typer.Option(..., "--mapping", exists=True, readable=True, dir_okay=False),
-    regions: list[str] | None = typer.Option(None, "--region"),
     reference_year: int | None = typer.Option(None, "--reference-year"),
     end_year: int | None = typer.Option(None, "--end-year"),
     overwrite: bool = typer.Option(False, "--overwrite"),
 ) -> None:
-    """Bind exact stock inputs and assumptions to one IAM scenario."""
+    """Write stock settings for the regions in an IAM scenario."""
     path, config = write_stock_config(
         source,
         destination,
         mapping=mapping,
-        regions=regions,
         reference_year=reference_year,
         end_year=end_year,
         overwrite=overwrite,
@@ -126,16 +124,14 @@ def stock_inventory_command(
     config: Path | None = typer.Option(
         None, "--config", exists=True, readable=True, dir_okay=False
     ),
-    regions: list[str] | None = typer.Option(None, "--region"),
     end_year: int | None = typer.Option(None, "--end-year"),
     overwrite: bool = typer.Option(False, "--overwrite"),
 ) -> None:
-    """List reported IAM variables or audit a stock mapping."""
+    """List IAM variables or check whether the selected input rows are present."""
     path, inventory = write_stock_inventory(
         source,
         destination,
         config_path=config,
-        regions=regions,
         end_year=end_year,
         overwrite=overwrite,
     )

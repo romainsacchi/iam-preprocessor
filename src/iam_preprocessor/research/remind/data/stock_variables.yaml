@@ -1,9 +1,7 @@
 aggregate_regions: [World, EUR, EU27, NEU]
 capacity_prefix: "Cap|"
-capacity_additions_prefix: "New Cap|"
 transport_prefix: "Stock|Transport|"
 transport_additions_prefix: "Sales|Transport|"
 power_stock: "Cap|Electricity|{suffix}"
 power_additions: "New Cap|Electricity|{suffix}"
 power_lifetime: "Tech|Electricity|{suffix}|Lifetime"
-transport_powertrain_totals: [BEV, FCEV, Gases, Hybrid electric, Liquids]

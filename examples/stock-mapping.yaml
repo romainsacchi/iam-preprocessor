@@ -1,9 +1,8 @@
-# Illustrative template. Replace the region, variable names, units and
+# Settings apply to every region in the scenario file. Replace the variable names, units and
 # assumptions with the definitions in your scenario and source documentation.
 schema_version: 2
 assets:
   - id: solar-pv
-    region: R1
     mode: stock
     exit_policy: error
     stock:

@@ -21,8 +21,6 @@ _COMPATIBILITY_EXPORTS = {
     "prepare_remind": ".adapters.remind.preparation",
     "build_remind_stock_config": ".research.remind.stock_config",
     "write_remind_stock_config": ".research.remind.stock_config",
-    "build_remind_stock_inventory": ".research.remind.stock_inventory",
-    "write_remind_stock_inventory": ".research.remind.stock_inventory",
 }
 
 

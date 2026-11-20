@@ -73,7 +73,9 @@ def test_cli_help_and_image_skip_bev(tmp_path):
     for command in ("prepare", "stock-config", "stock-inventory", "stock-vintages"):
         assert command in help_result.stdout
     for command in ("stock-config", "stock-inventory"):
-        assert "preset" not in runner.invoke(app, [command, "--help"]).stdout
+        command_help = runner.invoke(app, [command, "--help"]).stdout
+        assert "preset" not in command_help
+        assert "--region" not in command_help
     for old_command in ("remind", "image", "message", "remind-stock-config"):
         assert runner.invoke(app, [old_command, "--help"]).exit_code != 0
 

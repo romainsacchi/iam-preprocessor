@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from os.path import relpath
 from pathlib import Path
 
@@ -22,14 +23,12 @@ def _years(frame, end_year):
     return [year for year in years if end_year is None or year <= end_year]
 
 
-def _mapped_inputs(frame, config, regions):
+def _mapped_inputs(frame, config):
     """Check whether each configured stock input is present for its region."""
     rows = []
     by_region = dict(tuple(frame.groupby("Region", sort=False)))
     for asset in config["assets"]:
         region = asset["region"]
-        if regions is not None and region not in regions:
-            continue
         region_frame = by_region.get(region, frame.iloc[:0])
         selectors = {key: asset[key] for key in ("stock", "inflow", "service") if key in asset}
         if "source" in asset["lifetime"]:
@@ -50,8 +49,6 @@ def _mapped_inputs(frame, config, regions):
                     detail=detail,
                 )
             )
-    if not rows:
-        raise DataValidationError("No configured stock assets match the requested regions.")
     return pd.DataFrame(rows)
 
 
@@ -60,29 +57,41 @@ def write_stock_inventory(
     destination,
     *,
     config_path=None,
-    regions=None,
     end_year=None,
     overwrite=False,
 ):
     """List reported variables or check the selected rows in the stock settings."""
     frame = read_frame(source)
-    if regions is not None:
-        missing = set(regions) - set(frame["Region"])
-        if missing:
-            raise DataValidationError(f"Regions are absent from the scenario: {sorted(missing)}")
     if config_path is None:
         years = _years(frame, end_year)
-        selected = frame if regions is None else frame.loc[frame["Region"].isin(regions)]
-        inventory = selected[["Model", "Scenario", "Region", "Variable", "Unit"]].copy()
+        inventory = frame[["Model", "Scenario", "Region", "Variable", "Unit"]].copy()
         inventory = inventory.assign(first_year=years[0], last_year=years[-1], status="reported")
     else:
         if end_year is not None:
-            raise DataValidationError("Set the end year in the configuration for a mapped audit.")
+            raise DataValidationError("With --config, set the end year in the YAML file.")
         config = load_stock_config(config_path)
         if scenario_identity(frame) != (config["model"], config["scenario"]):
             raise DataValidationError("Configuration model and scenario do not match the input.")
-        inventory = _mapped_inputs(frame, config, regions)
+        inventory = _mapped_inputs(frame, config)
     return write_csv_atomic(inventory, destination, overwrite=overwrite), inventory
+
+
+def _expand_asset_regions(assets, regions):
+    """Repeat shared asset settings for each scenario region."""
+    if not isinstance(assets, list):
+        return assets
+
+    expanded = []
+    for asset in assets:
+        if not isinstance(asset, dict) or "region" in asset:
+            expanded.append(asset)
+            continue
+        for region in regions:
+            # Each region needs its own nested settings because input paths are updated below.
+            regional_asset = deepcopy(asset)
+            regional_asset["region"] = region
+            expanded.append(regional_asset)
+    return expanded
 
 
 def write_stock_config(
@@ -90,16 +99,14 @@ def write_stock_config(
     destination,
     *,
     mapping,
-    regions=None,
     reference_year=None,
     end_year=None,
     overwrite=False,
 ):
     """Fill in IAM scenario details in the YAML and check the selected rows.
 
-    Templates may omit model, scenario, schema version and years. The input table
-    supplies the labels and default horizon. Each asset specifies its exact rows
-    and scientific assumptions with the same fields as a stock configuration.
+    The input table supplies the model and scenario names and the default year
+    range. Asset settings without a region are copied to every region in the table.
     """
     frame = read_frame(source)
     model, scenario = scenario_identity(frame)
@@ -121,16 +128,14 @@ def write_stock_config(
         config["reference_year"] = reference_year
     if end_year is not None:
         config["end_year"] = end_year
+    if "assets" in config:
+        regions = frame["Region"].drop_duplicates().tolist()
+        config["assets"] = _expand_asset_regions(config["assets"], regions)
     config = validate_stock_config(config, source=mapping)
     if config["reference_year"] < years[0] or config["end_year"] > years[-1]:
         raise DataValidationError("The configured years are outside the input time horizon.")
-    if regions is not None:
-        missing = set(regions) - {asset["region"] for asset in config["assets"]}
-        if missing:
-            raise DataValidationError(f"No asset mappings for regions: {sorted(missing)}")
-        config["assets"] = [asset for asset in config["assets"] if asset["region"] in regions]
-    audit = _mapped_inputs(frame, config, None)
-    errors = audit.loc[audit["status"].eq("invalid"), "detail"]
+    inputs = _mapped_inputs(frame, config)
+    errors = inputs.loc[inputs["status"].eq("invalid"), "detail"]
     if not errors.empty:
         raise DataValidationError(f"Invalid stock mapping ({len(errors)} inputs). {errors.iloc[0]}")
     if destination.exists() and not overwrite:
