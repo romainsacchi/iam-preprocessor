@@ -161,6 +161,51 @@ def test_model_neutral_cli_uses_yaml_and_reconstructs(inputs, tmp_path, model):
     assert set(vintages["scenario"]) == {"model-specific run"}
 
 
+def test_composition_proxy_is_not_reported_as_direct_evidence(inputs):
+    frame, config, path, _ = inputs
+    config["assets"][0]["initial"]["evidence_kind"] = "composition_proxy"
+    path.write_text(yaml.safe_dump(config))
+    _, diagnostics, table = enrich_stock_vintages(frame, load_stock_config(path), return_v2=True)
+    diagnostic = diagnostics[0]
+    assert diagnostic["opening_evidence_share"] == pytest.approx(1)
+    assert diagnostic["opening_direct_evidence_share"] == pytest.approx(0)
+    assert diagnostic["opening_proxy_evidence_share"] == pytest.approx(1)
+    opening = table.loc[table["year"].eq(2020) & table["metric"].eq("stock")]
+    assert set(opening["evidence_basis"]) == {"observed_proxy"}
+
+
+def test_observation_file_can_distinguish_proxy_cohorts_from_prior(inputs):
+    _, config, path, _ = inputs
+    observation = path.parent / Path(config["assets"][0]["initial"]["file"])
+    pd.DataFrame(
+        {
+            "cohort": [2010, 2020],
+            "amount": [2, 8],
+            "service_factor": [0.5, 1.125],
+            "evidence_basis": ["prior", "observed_proxy"],
+        }
+    ).to_csv(observation, index=False)
+    _, diagnostics, table = enrich_stock_vintages(
+        config=load_stock_config(path), frame=inputs[0], return_v2=True
+    )
+    diagnostic = diagnostics[0]
+    assert diagnostic["opening_prior_share"] == pytest.approx(0.2)
+    assert diagnostic["opening_proxy_evidence_share"] == pytest.approx(0.8)
+    opening = table.loc[table["year"].eq(2020) & table["metric"].eq("stock")]
+    assert opening.set_index("cohort_year")["evidence_basis"].to_dict() == {
+        2010: "prior",
+        2020: "observed_proxy",
+    }
+
+
+def test_initial_evidence_kind_is_strict(inputs):
+    _, config, path, _ = inputs
+    config["assets"][0]["initial"]["evidence_kind"] = "maybe_observed"
+    path.write_text(yaml.safe_dump(config))
+    with pytest.raises(DataValidationError, match="evidence_kind"):
+        load_stock_config(path)
+
+
 def test_equilibrium_initialization_allows_zero_opening_stock(inputs):
     frame, config, path, _ = inputs
     frame.loc[frame.Variable.eq("Stock|Cars"), "2020"] = 0

@@ -83,7 +83,7 @@ def read_initial_cohorts(initial, reference_year):
         return None, opening - initial["maximum_age"]
     try:
         observed = pd.read_csv(initial["file"])
-        allowed = {"cohort", "amount", "service_factor"}
+        allowed = {"cohort", "amount", "service_factor", "evidence_basis"}
         if set(observed.columns) - allowed:
             raise ValueError("Unexpected observation columns")
         values = observed[["cohort", "amount"]].to_numpy(float)
@@ -100,6 +100,10 @@ def read_initial_cohorts(initial, reference_year):
         ):
             raise ValueError("Invalid cohort years or zero total")
         observed["cohort"] = cohorts.astype(int)
+        if "evidence_basis" in observed and not set(observed["evidence_basis"]).issubset(
+            {"prior", "observed", "observed_proxy"}
+        ):
+            raise ValueError("Invalid cohort evidence basis")
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise DataValidationError(f"Invalid cohort observations: {initial['file']}: {exc}") from exc
     return observed, int(cohorts.min())

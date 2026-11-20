@@ -173,7 +173,7 @@ def reconstruct_asset(frame, asset, reference_year, end_year):
         if service_target is not None:
             service_target = service_target[:count]
 
-    evidence_basis = _cohort_evidence(observed, result.cohorts, opening_year)
+    evidence_basis = _cohort_evidence(observed, result.cohorts, opening_year, asset["initial"])
     return AssetReconstruction(
         cohorts=result,
         stock_shares=stock_shares,
@@ -323,9 +323,21 @@ def _service_shares(frame, asset, stock, years, service_years, factors, requeste
     return service_shares, service_target
 
 
-def _cohort_evidence(observed, cohorts, opening_year):
+def _cohort_evidence(observed, cohorts, opening_year, initial):
     """Label each cohort by where its stock quantities came from."""
     basis = np.full(len(cohorts), "iam_addition", dtype=object)
     opening_cohorts = cohorts <= opening_year
-    basis[opening_cohorts] = "prior" if observed is None else "observed"
+    if observed is None:
+        basis[opening_cohorts] = "prior"
+        return basis
+
+    default_basis = "observed"
+    if initial.get("evidence_kind", "direct_observation") != "direct_observation":
+        default_basis = "observed_proxy"
+    observed_basis = {}
+    if "evidence_basis" in observed:
+        observed_basis = observed.set_index("cohort")["evidence_basis"].to_dict()
+    basis[opening_cohorts] = [
+        observed_basis.get(cohort, default_basis) for cohort in cohorts[opening_cohorts]
+    ]
     return basis

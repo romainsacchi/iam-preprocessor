@@ -48,6 +48,10 @@ def validate_vintage_table(table: pd.DataFrame) -> None:
         raise DataValidationError("Vintage values must be finite and nonnegative.")
     if table[["model", "scenario", "region", "asset", "metric", "unit"]].isna().any().any():
         raise DataValidationError("Vintage identity, metric and unit fields cannot be null.")
+    evidence = {"prior", "observed", "observed_proxy", "iam_addition"}
+    unknown_evidence = set(table["evidence_basis"]) - evidence
+    if unknown_evidence:
+        raise DataValidationError(f"Unknown evidence basis: {sorted(unknown_evidence)}")
     # The reporting year describes the whole fleet. The cohort year identifies when it was built.
     year = pd.to_numeric(table["year"], errors="coerce")
     cohort = pd.to_numeric(table["cohort_year"], errors="coerce")
@@ -111,8 +115,10 @@ def validation_contract(diagnostics: list[dict]) -> dict:
         )
         structural = "warning" if source_conflict else "pass"
         observed_share = diagnostic.get("opening_evidence_share", 0.0)
+        direct_share = diagnostic.get("opening_direct_evidence_share", observed_share)
+        proxy_share = diagnostic.get("opening_proxy_evidence_share", 0.0)
         prior_share = diagnostic.get("opening_prior_share", 1.0 - observed_share)
-        evidence = "pass" if observed_share >= 1 - 1e-9 else "warning"
+        evidence = "pass" if direct_share >= 1 - 1e-9 else "warning"
         prior = "pass" if prior_share <= 1e-9 else "warning"
         checks = {
             "numerical_residuals": {
@@ -128,6 +134,8 @@ def validation_contract(diagnostics: list[dict]) -> dict:
             "evidence_coverage": {
                 "status": evidence,
                 "opening_evidence_share": observed_share,
+                "opening_direct_evidence_share": direct_share,
+                "opening_proxy_evidence_share": proxy_share,
             },
             "prior_dependence": {
                 "status": prior,

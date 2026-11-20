@@ -219,7 +219,9 @@ def _asset_diagnostics(asset, reconstruction):
         "maximum_absolute_inflow_residual": float(np.max(np.abs(result.inflow[1:] - flows[1:]))),
         "maximum_stock_target": float(np.max(targets)),
         "opening_prior_share": opening_share(basis == "prior"),
-        "opening_evidence_share": opening_share(basis == "observed"),
+        "opening_evidence_share": opening_share(np.isin(basis, ["observed", "observed_proxy"])),
+        "opening_direct_evidence_share": opening_share(basis == "observed"),
+        "opening_proxy_evidence_share": opening_share(basis == "observed_proxy"),
         "total_additional_exits": float(np.sum(result.additional_exit[1:])),
         "negative_implied_exit_years": result.years[
             np.isfinite(implied) & (implied < -1e-12)

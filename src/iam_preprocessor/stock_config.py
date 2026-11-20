@@ -249,6 +249,7 @@ def _validate_initial_stock(initial, source, reference_year, schema_version):
             "base_year",
             "base_kind",
             "acknowledge_prior",
+            "evidence_kind",
         ),
     )
     nonempty(initial["provenance"], "initial stock provenance")
@@ -256,9 +257,17 @@ def _validate_initial_stock(initial, source, reference_year, schema_version):
     if initial["kind"] == "observed_shares":
         if "file" not in initial or "maximum_age" in initial:
             raise DataValidationError("observed_shares requires an observation CSV file.")
+        evidence_kind = initial.get("evidence_kind", "direct_observation")
+        if evidence_kind not in {"direct_observation", "composition_proxy"}:
+            raise DataValidationError(
+                "Observed initial shares require evidence_kind direct_observation or "
+                "composition_proxy."
+            )
         nonempty(initial["file"], "observation file")
         initial["file"] = str((source.parent / initial["file"]).resolve())
     elif initial["kind"] == "equilibrium":
+        if "evidence_kind" in initial:
+            raise DataValidationError("evidence_kind is only valid for observed initial shares.")
         age = initial.get("maximum_age")
         if type(age) is not int or not 1 <= age <= 150 or "file" in initial:
             raise DataValidationError("Equilibrium initialization needs maximum_age from 1 to 150.")
@@ -267,6 +276,8 @@ def _validate_initial_stock(initial, source, reference_year, schema_version):
                 "Schema v2 equilibrium initialization requires acknowledge_prior: true."
             )
     elif initial["kind"] == "warm_start":
+        if "evidence_kind" in initial:
+            raise DataValidationError("evidence_kind is only valid for observed initial shares.")
         age, base = initial.get("maximum_age"), initial.get("base_year")
         if (
             initial.get("base_kind") != "equilibrium"
