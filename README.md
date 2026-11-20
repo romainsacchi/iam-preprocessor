@@ -1,21 +1,22 @@
 # iam-preprocessor
 
-`iam-preprocessor` prepares integrated assessment model (IAM) scenario files for
-[`premise`](https://github.com/polca/premise). Its main research feature
-reconstructs the annual build-up of stock assets: for each model year, it reports
-how much surviving capacity comes from each construction year.
+`iam-preprocessor` prepares energy and climate scenarios for `premise`. It also
+estimates when the assets in use in a given year were built. For example, it can
+estimate how much of the solar capacity still operating in 2040 was built in
+2025. [premise](https://github.com/polca/premise)
 
-The reconstruction is preliminary. Generated vintages are derived from IAM stock,
-addition, and lifetime data plus explicit assumptions about the opening stock.
-They are not native IAM output.
+The estimates are preliminary. They use reported capacity and additions,
+equipment lifetimes, and information about the assets already in use at the
+start. The same workflow is designed for integrated assessment models (IAMs)
+used with `premise`, including REMIND, IMAGE, and MESSAGE. Each asset needs
+matching input rows and a documented lifetime assumption.
 
 ## Start here
 
-- [Stock-vintage guide](docs/stock-vintages.md): inputs, equations, assumptions,
-  output, and limitations.
-- [Documentation map](docs/README.md): short guides and detailed research records.
-- [Example map](examples/README.md): which scripts are suitable for a first run.
-- [Python API](docs/api.rst): module-level reference.
+- The method, inputs, outputs, and limitations. [Stock-vintage guide](docs/stock-vintages.md)
+- The short guides and research notes. [Documentation list](docs/README.md)
+- The files to use for a first run. [Examples](examples/README.md)
+- The Python modules and functions. [Python API](docs/api.rst)
 
 ## Installation
 
@@ -27,85 +28,64 @@ source .venv/bin/activate
 python -m pip install -e '.[stocks]'
 ```
 
-For tests and documentation:
-
-```console
-python -m pip install -e '.[dev]'
-```
-
 ## Build stock vintages
 
-A typical REMIND run has three steps:
+Inspect the variables, adapt the example YAML to your scenario, and run the
+reconstruction. Use one model and scenario per stock-vintage run.
 
 ```console
-iam-preprocessor remind-stock-inventory scenario.mif -o stock-inventory.csv \
-  --region DEU --region FRA --region UKI
-
-iam-preprocessor remind-stock-config scenario.mif -o stocks.yaml \
-  --region DEU --region FRA --region UKI --reconciliation joint
-
-iam-preprocessor stock-vintages scenario.mif --config stocks.yaml \
+iam-preprocessor stock-inventory scenario.csv -o stock-inventory.csv
+iam-preprocessor stock-config scenario.csv --mapping stock-mapping.yaml -o stocks.yaml
+iam-preprocessor stock-vintages scenario.csv --config stocks.yaml \
   -o output/stocks --package-only
 ```
 
-The inventory is a coverage check. The YAML file records variable mappings and
-scientific assumptions. The final command writes a sparse Parquet table, a
-validation summary, a checksum-bound manifest, and a JSON processing report.
+`stock-inventory` lists the regions, variables, and units in the file. Copy and
+edit the template to specify the rows and assumptions for each asset.
+`stock-config` records the model and scenario names and checks that the rows
+match. `stock-vintages` writes the build-year estimates in a Parquet table, a
+summary of the checks, a list of the output files, and a run report.
+[Stock mapping template](examples/stock-mapping.yaml)
 
-The workflow accepts a normalized IAM table from another model when the YAML file
-identifies exact rows for installed stock and additions and defines a lifetime
-assumption. Opening cohorts can come from observations or an explicit prior.
+Input files can be CSV, MIF, or Excel. Use one column per year. Start with
+observations of when existing assets were built, or state an assumption about
+their ages. The current workflow requires rows for both installed stock and
+additions.
 
 ## How the code is divided
 
-The production path follows this order:
-
 | Module | Responsibility |
 | --- | --- |
-| `stock_config.py` | Validate the YAML contract and resolve evidence files. |
-| `vintage_inputs.py` | Select exact IAM rows and expand them to annual series. |
-| `stock_model.py` | Apply survival and annual stock-flow accounting. |
-| `flodym_stock.py` | Define lifetime models and run the FLODyM stock solvers. |
-| `stock_annualisation.py` | Reconcile stock anchors and reported additions in joint mode. |
-| `vintage_reconstruction.py` | Build one asset's cohorts and service shares. |
-| `stock_vintages.py` | Process all configured assets and assemble public output. |
-| `stock_package.py` | Validate and write the canonical data package. |
+| `stock_workflow.py` | List variables and check the selected rows against the scenario. |
+| `stock_config.py` | Check the YAML settings and find the files they refer to. |
+| `vintage_inputs.py` | Read the selected rows and fill in years between reported values. |
+| `vintage_reconstruction.py` | Estimate one asset's build-year groups and their shares. |
+| `stock_model.py` and `flodym_stock.py` | Work out how much stock survives, is added, or retires. |
+| `stock_annualisation.py` | Fit annual additions to reported stock and addition data. |
+| `stock_vintages.py` and `stock_package.py` | Check and write the results for all selected assets. |
 
-Production uses FLODyM for fixed and Weibull survival and implements the REMIND
-retirement curve as a FLODyM lifetime model. The stock extra installs the pinned
-revision from [FLODyM PR #261](https://github.com/pik-piam/flodym/pull/261).
-FLODyM initializes and projects cohorts and handles proportional, oldest-first,
-and hazard-scaled retirement in stock-driven mode. The joint fit uses SciPy and
-OSQP to determine annual additions, then FLODyM projects the resulting cohorts.
+FLODyM tracks the assets built in each year as they age and retire. In `joint`
+mode, SciPy and OSQP first estimate annual additions using both the stock and
+addition data. The installation command above uses a specific FLODyM revision
+for reproducible results. [FLODyM PR #261](https://github.com/pik-piam/flodym/pull/261)
 
-The `stock_evidence`, `stock_history`, `stock_observations`, `stock_service`,
-`stock_survival_fit`, and `stock_validation` modules support evidence preparation
-and validation campaigns. They are useful research tools but are not called by a
-normal `stock-vintages` run.
+Every IAM uses the same YAML format for the stock calculation. Optional code
+that corrects input files lives under `adapters/`. The older REMIND stock
+mapping tools live under `research/remind/` for reproducing past studies.
 
-Repository folders have distinct roles: `src/iam_preprocessor` contains library
-code, `tests` contains synthetic regression cases, `examples` contains reproducible
-research scripts, and `docs` contains guides and research records.
+## Prepare scenario files
 
-## Other preprocessing workflows
-
-| IAM | Processing |
-| --- | --- |
-| IMAGE | Derive transport energy-service variables from reviewed SEC assumptions. |
-| MESSAGE | Normalize region labels and remove the global aggregate. |
-| REMIND | Split cement production and energy use into CCS and non-CCS variables. |
-| Any supported table | Keep variables accepted by the `premise` allowlist. |
-
-Examples:
+Use `prepare` to put the table in a standard format and write a CSV. Use
+`--no-filter` to retain all rows for stock reconstruction.
+Use `--scenario` to select one scenario from a workbook with several runs.
 
 ```console
-iam-preprocessor image image-inputs --output-dir processed/image \
-  --sec-config assumptions.yaml
-iam-preprocessor message message-inputs --output-dir processed/message
-iam-preprocessor remind remind-inputs --output-dir processed/remind
+iam-preprocessor prepare scenario.xlsx --output-dir processed --no-filter
 ```
 
-Run `iam-preprocessor COMMAND --help` for command options.
+The YAML files define which variables to read, how to name newly calculated
+variables, and what to keep when filtering. Optional corrections for specific
+models are listed in the [command-line guide](docs/usage.rst).
 
 ## Development checks
 
@@ -116,8 +96,8 @@ pytest
 sphinx-build -W -b html docs docs/_build/html
 ```
 
-Tests use small synthetic fixtures. Scenario files, evidence archives, generated
-outputs, reports, encryption keys, and local environment files are excluded from
-Git. Existing outputs are protected unless `--overwrite` is supplied.
+Tests use small made-up datasets. The repository excludes private input files,
+generated results, and encryption keys. Use `--overwrite` to replace existing
+outputs.
 
 The project uses the BSD 3-Clause License.

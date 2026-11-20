@@ -1,10 +1,10 @@
 iam-preprocessor
 ================
 
-``iam-preprocessor`` provides transparent, tested transformations for preparing
-IAM scenario tables for premise. No scenario data or cryptographic keys are part
-of the package. The repository's ``docs/README.md`` separates the short user
-guides from detailed research records.
+``iam-preprocessor`` prepares energy and climate scenarios for ``premise`` and
+estimates when the assets in each scenario were built. It works with data from
+integrated assessment models (IAMs). See ``docs/README.md`` for the guides and
+notes from earlier studies.
 
 .. toctree::
    :maxdepth: 2

@@ -1,57 +1,53 @@
 # Stock-vintage reconstruction
 
-This workflow estimates which construction-year cohorts make up an IAM stock in
-each year. It is intended for dynamic life-cycle assessment, where the timing of
-asset construction matters.
-
-The method is preliminary. It reconstructs a plausible cohort history from the
-available IAM variables and declared assumptions. It does not recover hidden
-vintages from the IAM.
+This workflow estimates when the assets still in use in each scenario year were
+built. A group of assets built in the same year is called a vintage or cohort.
+The estimates are preliminary and depend on the available data and assumptions.
+They help put construction impacts in the right years in a dynamic life-cycle
+assessment.
 
 ## What the workflow needs
 
 Each asset and region needs:
 
-1. installed stock or capacity;
-2. additions or sales;
-3. a lifetime or survival assumption; and
-4. an opening stock composition or an acknowledged prior.
+1. How much stock or capacity is installed.
+2. How much is added or sold.
+3. How long assets stay in use.
+4. When the assets already in use were built, based on observations or a stated assumption.
 
-An optional service series can be used to express service by cohort. The total
-service series does not reveal how use is divided between old and new assets, so
-relative service weights remain a separate assumption.
+An optional series gives total use, such as electricity generated. To split that
+use by build year, specify how much older and newer assets are used.
 
-Variable names and units are matched exactly. Missing values, duplicate matches,
-negative quantities, and extrapolation beyond the IAM horizon are rejected.
+Use the exact variable names and units in the scenario file. Each selected row
+must be unique and have a nonnegative value for every reported year. Choose
+years within the range covered by the file.
 
-## From IAM rows to vintage shares
-
-The production path is deliberately divided into small tasks:
+## How the code runs
 
 ```text
 IAM table + YAML configuration
     |
     +-- vintage_inputs.py
-    |     select exact rows and produce annual input series
+    |     read the selected rows and fill in years between reported values
     |
     +-- vintage_reconstruction.py
-    |     build the opening stock, apply survival, reconcile annual flows
+    |     set the starting stock and calculate how it changes each year
     |
     +-- stock_model.py / flodym_stock.py / stock_annualisation.py
-    |     calculate survival, fit annual additions, and project cohorts
+    |     calculate survival and estimate how many assets are added each year
     |
     +-- stock_vintages.py
-    |     process every asset and assemble output
+    |     collect the results for each asset
     |
     +-- stock_package.py
-          validate and write the data package
+          check and write the results
 ```
 
 The corresponding public Python entry points are `read_iam_series`,
 `annual_additions`, `reconstruct_asset`, `enrich_stock_vintages`, and
 `prepare_stock_vintages`.
 
-## Cohort accounting
+## How the stock changes each year
 
 Let `stock[t,c]` be the amount of cohort `c` still present at the end of year
 `t`. Let `survival[t,c]` be its survival fraction.
@@ -62,7 +58,8 @@ For an existing cohort:
 survivors[t,c] = stock[t-1,c] * survival[t,c] / survival[t-1,c]
 ```
 
-Natural retirement is the loss caused by survival:
+Natural retirement counts the assets that reach the end of their useful life
+under the chosen curve.
 
 ```text
 natural retirement[t]
@@ -79,47 +76,39 @@ closing stock
 New additions form a new cohort in their entry year. They are placed at the end
 of that year and cannot retire in the same year.
 
-Observed opening cohorts are quantities known to have survived to the opening
-year. They are advanced using conditional survival and are not subjected to past
-survival a second time.
+Assets seen at the start have already survived to that date. Their chances of
+remaining in use are calculated from that date onward.
 
 ## Lifetime choices
 
-The configuration supports three survival descriptions:
+The YAML sets the lifetime curve for each asset:
 
-- `fixed`: all units retire at the declared age;
-- `weibull`: a distribution defined by mean lifetime and shape;
-- `remind`: the REMIND capacity law based on a reported maximum lifetime.
+- `fixed` gives every unit the same retirement age.
+- `weibull` uses a mean lifetime and a shape parameter.
+- `quartic` uses a maximum lifetime. Survival reaches zero at that age.
 
-For the REMIND law, survival at age `a` with maximum lifetime `tau` is:
-
-```text
-survival(a) = max(0, 1 - (a / tau)^4)
-```
-
-Its mean lifetime is `4 * tau / 5`. A lifetime read from the IAM is attached to the
-cohort built in that year. It is not applied retroactively to older cohorts.
+A lifetime read from the IAM is attached to the cohort built in that year.
+Any of these curves can be selected for any IAM, provided the parameter matches
+the meaning of the input lifetime.
 
 ## How the workflow uses FLODyM
 
-`flodym_stock.py` uses FLODyM's `FixedLifetime` and `WeibullLifetime` for
-survival and adds `RemindLifetime` for REMIND's maximum-lifetime curve. The
-workflow passes the observed or assumed opening cohorts through `set_initial_stock`.
+`flodym_stock.py` uses FLODyM to calculate how many assets survive at each age.
+It passes the observed or assumed starting stock to `set_initial_stock`.
 
-`InflowDrivenDSM` projects stock and retirements by cohort from annual additions,
-including additions fitted in `joint` mode. With `StockDrivenDSM`, `proportional`
-uses FLODyM's `remove_flat` rule and `oldest_first` uses `remove_oldest`. The
-`error` policy rejects declines that require early retirement. With
-`remove_by_hazard`, FLODyM raises the underlying retirement hazards until the
-stock target is met. A zero natural hazard can make a stock target infeasible
-under this rule, for example with a fixed lifetime.
+FLODyM's `InflowDrivenDSM` calculates what remains and what retires when annual
+additions are given. Its `StockDrivenDSM` works out additions when installed
+stock is given. If more assets need to retire early, `proportional` removes the
+same share from each build-year group, and `oldest_first` starts with the oldest.
+`remove_by_hazard` increases the retirement risks set by the lifetime curve
+until the stock target is met. With this option, a group with zero natural
+retirement risk can prevent a stock decline from being matched. Use `error` to
+stop whenever the stock target requires early retirement.
 
-In `stock_flow`, the IAM code reconciles both stock and additions. For
-`remove_by_hazard`, it sets aside the current year's reported additions and lets
-FLODyM retire the older cohorts. In `joint`,
-the existing IAM stock calculation supplies the reference retirement fractions.
-SciPy and OSQP fit annual additions, and FLODyM projects the fitted additions
-using those fractions.
+In `stock_flow`, the code keeps both reported stock and additions. The
+`remove_by_hazard` rule applies only to assets already in use before that year's
+additions. In `joint`, SciPy and OSQP estimate annual additions and FLODyM uses
+those estimates to track the build-year groups.
 
 The `stocks` extra requires Git and installs the exact revision from
 [FLODyM PR #261](https://github.com/pik-piam/flodym/pull/261). The processing
@@ -129,39 +118,35 @@ stock models.
 
 ## Annual input series
 
-Stock levels and sampled annual additions are linearly interpolated between IAM
-years. No extrapolation is allowed.
+Between reported years, stock levels and annual addition rates follow a straight
+line. The input file sets the earliest and latest year the tool can use.
 
-Some models may report an average annual addition for a complete multi-year
-window. Such data use `reported_periods`, with explicit start and end years.
-Windows must be complete, non-overlapping, and cover every requested year.
+Some models give an annual average for a period of several years. Choose
+`reported_periods` and give the start and end year for each period. The periods
+cannot overlap or leave gaps in the years you want to calculate.
 
-For IMAGE or MESSAGE, use the timing interpretation documented by the modelling
-team. A difference between two capacity points is a net change, not gross
-additions, because retirements are mixed into the difference.
+Use the reporting convention documented by the modelling team. The difference
+between two capacity points measures net change after retirements.
 
-## Reconstruction modes
+## Ways to use the stock and addition data
 
-| Mode | Main evidence preserved | Typical use |
+| Mode | What it keeps | What it estimates or checks |
 | --- | --- | --- |
 | `stock` | Installed stock path | Compare inferred additions with reported additions. |
 | `inflow` | Addition path | Compare projected stock with reported stock. |
-| `stock_flow` | Both annual paths exactly | Inputs are already mutually consistent. |
-| `joint` | Original stock anchors; additions fitted under declared constraints | Sparse or mildly conflicting IAM series. |
+| `stock_flow` | Both annual series | Checks whether the figures can agree under the retirement rule. |
+| `joint` | Stock values for the reported years | Fits annual additions to the available stock and addition data. |
 
-`joint` mode fits annual additions over complete reporting windows. The report
-records every discrepancy from a source addition constraint. A strict policy
-stops on a conflict; a penalized policy retains stock anchors and reports the
-adjustment.
+In `joint` mode, `strict` stops if the stock and addition data cannot both be
+matched. `penalized` matches the reported stock and shows where the fitted
+additions differ from the reported additions.
 
-When stock falls faster than natural retirement, an explicit additional-retirement
-policy is needed. Available policies include proportional, oldest-first, and
-FLODyM's `remove_by_hazard`. Joint mode supports `error` and `proportional`.
-These policies describe assumptions about when assets leave the stock.
+If stock falls faster than natural retirement, choose a rule for early
+retirement. `joint` mode supports `error` and `proportional`.
 
 ## Opening stock
 
-An opening composition can come from a CSV with:
+You can supply the starting stock by build year in a CSV file.
 
 ```text
 cohort,amount
@@ -170,91 +155,63 @@ cohort,amount
 2020,240
 ```
 
-The optional `service_factor` column weights service by cohort. Cohorts must be
-unique integer years and amounts must be finite and non-negative.
+Optional columns are `service_factor` for how much the assets are used and
+`evidence_basis` for the source of each group's estimate. Use whole years, one
+row per year, and nonnegative amounts.
 
-When observations are unavailable, `equilibrium` or `warm_start` constructs an
-opening prior over a declared maximum age. Schema-v2 configurations require
-`acknowledge_prior: true`. Output and validation keep prior-based cohorts
-separate from observed and IAM-addition cohorts.
+The YAML field `evidence_kind` records how well the data match the asset being
+modelled. Use `composition_proxy` when borrowing the age breakdown from a
+different place or technology. The output marks those rows as `observed_proxy`.
+
+Without observations, use `equilibrium` or `warm_start` and give the oldest age
+to include. With `schema_version: 2`, set `acknowledge_prior: true` to record
+that the starting ages are assumed. The results show whether each build-year
+group comes from an assumption, an observation, or a reported addition.
 
 ## Minimal configuration
 
-The values below show the format and are not recommended universal assumptions.
+Start with the [stock mapping template](../examples/stock-mapping.yaml). It
+uses example names and assumptions. Enter the exact variable names and units
+for your scenario. If lifetimes vary by build year and the scenario reports
+them, give the variable name and unit `years` in `lifetime.source`.
 
-```yaml
-schema_version: 1
-model: REMIND
-scenario: example
-reference_year: 2022
-end_year: 2050
-
-assets:
-  - id: passenger-bev
-    region: EUR
-    mode: joint
-    exit_policy: proportional
-
-    stock:
-      variable: Stock|Transport|Pass|Road|LDV|Four Wheelers|BEV
-      unit: million veh
-    inflow:
-      variable: Sales|Transport|Pass|Road|LDV|Four Wheelers|BEV
-      unit: million veh
-
-    inflow_timing:
-      kind: sampled_annual
-      provenance: Annual sales sampled at IAM output years.
-
-    lifetime:
-      distribution: weibull
-      mean: 16
-      initial_mean: 16
-      shape: 3
-      interpretation: Mean service-life assumption.
-      provenance: Replace with reviewed evidence.
-
-    initial:
-      kind: equilibrium
-      maximum_age: 30
-      acknowledge_prior: true
-      provenance: Opening composition is unavailable.
-
-    service_weighting:
-      kind: equal
-      annual_age_decay: 0
-      new_cohort_exposure: 1
-      provenance: Equal annual service per surviving vehicle.
-```
-
-All unknown fields are rejected. Paths in the YAML file are resolved relative to
-that file.
+Use the fields shown in the template. File paths are relative to the YAML file. A template
+may omit the model, scenario and years. `stock-config` fills in the model and
+scenario from the file and uses the available year range within 2005–2100. Set
+the years in the template or on the command line to use a shorter horizon.
 
 ## Commands
 
-For REMIND, inspect coverage before building a configuration:
+List the input rows, fill in the model and scenario names in the YAML, and
+check that the chosen rows are present.
 
 ```console
-iam-preprocessor remind-stock-inventory scenario.mif -o stock-inventory.csv \
-  --region DEU --region FRA --region UKI
-
-iam-preprocessor remind-stock-config scenario.mif -o stocks.yaml \
-  --region DEU --region FRA --region UKI --reconciliation joint
+iam-preprocessor stock-inventory scenario.csv -o stock-inventory.csv
+iam-preprocessor stock-config scenario.csv --mapping stock-mapping.yaml -o stocks.yaml
+iam-preprocessor stock-inventory scenario.csv --config stocks.yaml -o mapped-inputs.csv
 ```
 
-Run the reconstruction:
+Calculate the build-year shares.
 
 ```console
-iam-preprocessor stock-vintages scenario.mif --config stocks.yaml \
+iam-preprocessor stock-vintages scenario.csv --config stocks.yaml \
   -o output/stocks --package-only
 ```
 
-Remove `--package-only` when the wide schema-v1 compatibility table is also
-needed. Existing files are protected unless `--overwrite` is supplied.
+Omit `--package-only` to also write the older CSV format with one column per
+year. Use `--overwrite` to replace existing files.
+
+## REMIND lifetime test case
+
+REMIND energy-conversion assets are a test case for the quartic curve. For age
+`a` and maximum lifetime `tau`, survival is `max(0, 1 - (a / tau)^4)` and the
+mean lifetime is `4 * tau / 5`. Use `distribution: quartic` with
+`initial_maximum` and either `maximum` or a `source` variable. Old configurations
+with `distribution: remind` still select the same curve.
 
 ## Output
 
-The canonical sidecar directory contains:
+The output folder contains three files.
 
 ```text
 datapackage.json
@@ -262,42 +219,44 @@ vintages.parquet
 validation.json
 ```
 
-A non-package-only run also writes `vintages.csv.gz` and an IAM-style wide CSV.
+Without `--package-only`, the tool also writes `vintages.csv.gz` and a CSV with
+one column per year.
 
-The long table contains model, scenario, region, asset, service year, cohort year,
-metric, value, unit, and evidence basis. Metrics include stock, stock share,
-service share, additions, and natural or additional retirement.
+Each table row gives the model, scenario, region, asset, year in use, year built,
+type of result, value, unit, and where the estimate came from. Results include
+stock, shares of stock or use, additions, and retirements.
 
-The processing report records source and configuration hashes, implementation
-hashes, library versions, assumptions, residuals, and warnings. Keep it with the
-data package.
+The run report records the assumptions, software versions, warnings, and
+differences from the input figures. It also records file fingerprints so the
+same inputs, settings, and code can be identified later. Keep it with the output
+folder.
 
 ## Service shares and later use
 
-Stock share is the fraction of installed stock in a cohort. Service share is the
-assumed fraction of annual use delivered by that cohort. Equal use, observed
-factors, age decay, and annual age profiles are supported.
+Stock share is the fraction of installed stock built in a given year. Service
+share is the fraction of annual use supplied by that group. Use can be assumed
+equal, based on observations, or described by a curve that varies with age.
 
-`premise` reads these shares and associates construction demand with calendar
-years. TRAILS propagates that time-distributed demand through the life-cycle
-system. Inventory coefficients and total construction demand remain unchanged;
-the workflow changes their timing.
+`premise` can use the shares to assign construction demand to build years.
+TRAILS can then follow that demand through the supply chain and calculate the
+impacts using the background data for those years.
 
 ## Main limitations
 
-- IAM output years may be sparse, so annual values depend on interpolation or a
-  fitted path.
-- Opening stock composition is often a prior or a geographic proxy.
-- A lifetime parameter does not identify a full retirement distribution unless
-  its meaning is documented.
+- When only a few years are reported, the estimated values between them depend on
+  how those years are filled in.
+- Starting ages often rely on an assumption or observations borrowed from another region.
+- A single lifetime tells us little about when different assets retire unless
+  we know how the model defines it.
 - Installed stock and additions may reflect different accounting conventions.
-- Additional retirement allocation is assumed when source data do not identify it.
-- Total service does not determine relative utilization by cohort.
+- Without retirement dates, the choice of which assets retire early follows the
+  selected rule.
+- Total use gives little information about how use is shared between age groups.
 - The end-year convention approximates within-year construction and operation.
 - Results depend on the selected technology and regional boundaries.
 
-Use `validation.json` and the processing report to distinguish numerical
-consistency from empirical evidence quality.
+`validation.json` and the run report show whether the numbers balance and where
+the results depend on limited observations.
 
 ## Further detail
 

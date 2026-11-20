@@ -26,7 +26,7 @@ the campaign before treating those figures as results of the current code.
 Power stock uses `Cap|Electricity|...` (GW), additions use
 `New Cap|Electricity|...` (GW/yr), service uses `SE|Electricity|...` (EJ/yr).
 Gas-turbine service has the different suffix `Gas|++|Gas Turbine`; lifetime uses
-`Tech|Electricity|Gas|Gas Turbine|Lifetime`. All selectors and units are checked
+`Tech|Electricity|Gas|Gas Turbine|Lifetime`. All variable names and units are checked
 exactly. Vehicle service is `ES|Transport|Pass|Road|LDV|Four Wheelers|Liquids`
 (billion pkm/yr); stock and sampled annual sales use the native `million veh` unit.
 Power lifetime series are maximum lifetimes under REMIND's documented survival
@@ -56,7 +56,7 @@ Power observations come from [EIA-860](https://www.eia.gov/electricity/data/eia8
 with at least 1 MW combined nameplate capacity. The sheet also contains standby
 and out-of-service records: the example selects `Status == OP`, the 50 states
 plus DC, and explicit non-CHP records. Generator IDs must be unique within plants.
-Each excluded category has a record-count and capacity ledger; dates and positive
+For each excluded category, we recorded the number of entries and total capacity. Dates and positive
 capacity are checked before aggregation. Observed totals are not substituted for
 IAM totals: only cohort shares are scaled. The audit reports the IAM-to-observed
 stock ratio so large boundary or calibration mismatches remain visible.
@@ -105,7 +105,7 @@ shares and service shares are equal under the default assumption; reported total
 service does not identify cohort-specific mileage or capacity factors. Power
 cases must respect 0.031536 EJ/yr per GW (8,760 hours). Optional cases violating
 this bound are recorded in `rejected-sensitivities.json` and not exported. A
-primary-case failure, selector error or numerical solver failure aborts the run.
+failure in the main case, an incorrect variable name or unit, or a failed calculation stops the run.
 Pinned OSQP performs the convex quadratic solve after an independent HiGHS
 feasibility check; stock conservation and solver-certificate tolerances are
 never relaxed.
@@ -131,32 +131,32 @@ PYTHONPATH=src python examples/run_remind_sector_expansion.py \
 The plotting script for the historical report is available in Git history at
 `83cf844:examples/plot_remind_sector_expansion.py`.
 
-The archive manifest, original curated cohorts, raw DfT/EIA files and IAM input
-are SHA-256 pinned. The curation audit keeps selection, missing dates, initial CSV
-hashes and source selectors. The ordinary enrichment report records configuration,
-implementation, observation and output hashes. Preserve both reports. Generated
-scenario data and raw observations are local and must not be committed.
+The archive list, starting stock, original DfT and EIA files, and IAM input are
+checked against recorded SHA-256 file fingerprints. The first report records
+which entries were used, missing dates, starting-stock files, and input variable
+names. The run report records the settings, code, observations, and outputs.
+Keep both reports. Keep private scenarios and observations outside Git.
 
-Acceptance includes exact source-anchor preservation; finite, nonnegative,
-normalized shares; stock balance; chronological validity; full-window source
-residual accounting; and independent analytic conditional survival checks from
-the serialized CSV. The PDF and CSV tables compare primary distributions, annual
-inflows and sensitivities for all eleven groups. Runtime checks must compare
-unfiltered, filtered, encrypted and cached profiles. A premise-to-TRAILS fixture
-uses the actual profiles with explicit synthetic inventories and both constant
-and varying backgrounds; it is not a complete regional ecoinvent LCA.
+Check that the saved CSV preserves reported stock values, that shares are
+nonnegative and sum to one when stock is present, and that future cohorts have
+no stock. Check the stock balance, differences across each full reporting
+period, and survival of the starting stock independently. The PDF and CSV tables
+compare the main results and alternatives for all eleven groups. Compare
+unfiltered, filtered, encrypted, and cached results. The test from `premise` to
+TRAILS uses the calculated shares with made-up inventories and with background
+data that are either constant or change over time.
 
 The runtime loader expects the filename `remind_SSP2-NPi2025.csv`; create a link
 to the generated CSV in each of the unfiltered, filtered and encrypted test
 directories. The ordinary `stock-vintages` command can generate the latter two
 with `--filter-output` and `--encrypt-to`. Use an ephemeral test key and remove
 it after testing. `examples/export_sector_runtime_fixture.py` accepts
-`--premise-checkout` and `--directory` (the campaign output), uses the paired
-consumer branch's fixture exporter and covers all eleven primary groups.
+`--premise-checkout` and `--directory` (the campaign output). It uses the test
+export script in the corresponding `premise` branch and covers all eleven main groups.
 Run premise's `dev/stock_vintage/check_iam_enrichment_runtime.py` for all cases
 and TRAILS' `dev/stock_vintage/check_iam_enrichment.py` on the resulting
-`integration` directory. The additional synthetic inventory coefficients are
-test constants; they do not constitute reviewed production-burden bindings.
+`integration` directory. The inventory amounts used here are examples for
+testing. Production processes would need separately reviewed links.
 
 ## Deferred groups and next priorities
 
@@ -169,17 +169,17 @@ existing eleven groups.
 
 | Group | Blocking issue for a defensible default | Work possible with current files |
 |---|---|---|
-| Separate petrol/diesel trajectories | Native fleet is combined | Keep combined profile and initial-composition sensitivities; require declared split before separate binding |
+| Separate petrol/diesel trajectories | Native fleet is combined | Keep combined profile and tests with different starting ages; require declared split before linking the fuels to separate inventory exchanges |
 | Hybrids/PHEVs | Native Hybrid electric versus UK HEV/PHEV/range-extender mapping | Inspect archived reporter technology definitions; avoid merging categories by name |
 | Gas/FCEV vehicles | Gas/LPG/bi-fuel boundary and sparse initial cohorts | Audit native categories and DfT selections; use explicit sensitivity if initial support is weak |
 | Hydro | Conventional versus pumped-storage boundary | Compare EIA conventional/pumped classes with native aggregate capacity; do not sum blindly |
-| Coal/biomass | CHP, CCS and technology aggregates | Build exact disjoint leaf crosswalks and audit plant technology/fuel/CHP fields |
+| Coal/biomass | CHP, CCS and technology aggregates | Build tables matching the most detailed technology categories without overlap and audit plant technology/fuel/CHP fields |
 | Battery storage | GW versus GWh assets; duration and cycle ageing | Separate converter and energy stocks, define service and initialize each independently |
 | Heat/hydrogen/industry | Equipment boundary, service unit and initial cohorts | Audit native capacity/additions/lifetime availability before choosing a prior |
-| Buildings/roads/water | No reviewed native stock crosswalk in this pilot | Continue the separate observation-based infrastructure strategy |
+| Buildings/roads/water | No reviewed mapping to the reported stock variables in this pilot | Continue the separate observation-based infrastructure strategy |
 
 The accepted regional proxies are not treated as a blocker. The most useful
-improvements within current data are: native technology crosswalks, age-specific
+improvements within current data are: tables matching the IAM's technology categories, age-specific
 service from EIA generation data, status/nameplate-boundary sensitivities, and
 component/repowering treatment. Expanding to other scenarios, regions, zero-initial
 stock technologies or post-2050 ten-year windows needs explicit new validation.

@@ -19,7 +19,7 @@ better estimate. Keep REMIND SSP2-NPi2025 as the sole scenario and retain the
 Groups: passenger BEVs, heavy trucks, liquid-fuel passenger cars, PV, CCGT,
 onshore wind, offshore wind, nuclear, gas turbines, geothermal and CSP.
 The accepted UK-to-EUR and existing WECC-to-USA proxies remain permitted, with
-explicit provenance. No additional REMIND-team data is required.
+a clear record of sources. No additional REMIND-team data is required.
 
 The principal deliverable is a reproducible, per-group evidence assessment with
 qualified profile updates. Completion does not require every candidate method
@@ -45,12 +45,12 @@ Current code and consequences:
 - `stock_observations.py` reads `3_1_Generator_Y2022.xlsx` explicitly. It returns
   operating rows but loses the identities and status transitions needed for a
   panel spanning several years. Generalize this reader before backtesting.
-- `run_remind_sector_expansion.py` hard-codes technology selectors and assumes
-  2022 initial shares. Put reviewed mappings and source boundaries in a small
-  versioned registry shared by audits and configuration generation.
+- At the start of the study, `run_remind_sector_expansion.py` listed technology
+  variable names in Python and assumed 2022 starting shares. The plan was to put
+  the reviewed names and source definitions in a YAML file for both checks and runs.
 - `stock_vintages.py` already supports observed initial service factors and a
   declared factor for future entrants. It can consume the first power-service
-  improvements without a change to the output namespace or consumer schema.
+  improvements without a change to the output variable names or file format.
 - Initial service factors remain associated with cohorts as they age. They are
   not automatically an age-dependent utilization curve.
 - `stock_annualisation.py` rejects partial initial power-reporting windows. A
@@ -73,7 +73,7 @@ A pinned data inventory, fields and experimental rules are in
 | Existing PV/CCGT curation and service audit | Earlier premise pilot scripts | Reuse audited matching/block logic after generalization, with tests |
 
 First promote the temporary 2020/2021 EIA files into a new immutable evidence
-snapshot, verify their existing hashes and write a new manifest. Do not edit the
+snapshot, verify their existing hashes and write a new file list. Do not edit the
 previous snapshot. Check legal units, table definitions, observation dates and
 revision metadata before aggregating data.
 
@@ -86,13 +86,13 @@ candidates and rejection reasons; the package remains completable with explicit
 vehicle sensitivities if none qualifies. No paid access, external contact or
 REMIND-team request is needed.
 
-## Workstream 1 — explain stock discrepancies
+## 1. Explain differences in stock totals
 
 ### Implementation
 
-1. Build one exact mapping record per group: IAM stock/inflow/service selectors,
+1. Build one exact mapping record per group: IAM variables for stock, additions, and use,
    units, source geography, source technology codes, status boundary, CHP/CCS
-   boundary, capacity definition, commissioning/first-use semantics, provenance,
+   boundary, capacity definition, commissioning/first-use definitions, source details,
    and mapping status (`supported`, `proxy`, `unresolved`). Resolve labels through
    the archived reporter definitions where possible; record remaining uncertainty.
 2. Parse EIA snapshots with unique generator keys and all relevant statuses. Keep
@@ -113,12 +113,12 @@ REMIND-team request is needed.
 6. For vehicles, report UK and EUR totals separately. Their ratio is a proxy
    scaling factor, not a like-for-like validation error. Check conventional ICE,
    hybrid/PHEV and HGV category definitions; retain the combined Liquids boundary.
-7. Write a discrepancy ledger with absolute values, ratios when denominators are
+7. Write a record of differences with absolute values, ratios when denominators are
    positive, comparison year, selection masses, possible explanations, supporting
    evidence and unresolved remainder. Overlapping explanations must not be summed
    as though they were independent contributions.
 
-### Deliverables and acceptance
+### Results and checks
 
 - `stock-asset-mappings.yaml`, `stock-comparison.csv`, `stock-discrepancies.json`.
 - Per-group 2020–2022 plots: observed totals, native anchors, interpolated values,
@@ -129,7 +129,7 @@ REMIND-team request is needed.
 - Each large discrepancy has an evidenced explanation or an unresolved label.
   Numerical closeness alone cannot promote an unresolved mapping.
 
-## Workstream 2 — historical cohort evaluation
+## 2. Check estimated build years against observations
 
 ### Implementation
 
@@ -162,7 +162,7 @@ REMIND-team request is needed.
    fixed age bins and old-age tails. Include unmatched mass and data revisions in
    the results instead of discarding them before computing errors.
 
-### Deliverables and acceptance
+### Results and checks
 
 - `generator-transitions.csv`, `vehicle-cohort-history.csv`,
   `backtest-predictions.csv`, `backtest-metrics.csv`, `backtest-decisions.json`.
@@ -177,7 +177,7 @@ REMIND-team request is needed.
   count weighting, imports/returns, cohort revisions, missing records and a known
   analytical cohort example. A failed empirical fit is reported, not suppressed.
 
-## Workstream 3 — service weighting with observed generation and usage evidence
+## 3. Estimate use by age from observed generation and travel
 
 ### Implementation
 
@@ -191,7 +191,7 @@ REMIND-team request is needed.
    Never sum page-4 output and page-1 totals for the same production twice.
 3. Reconcile annual generation with the end-year-stock service convention. Keep
    retired-in-year generation, partial-year entrants and assets outside the closing
-   operating stock in separate ledgers. Derive the first default factors from
+   operating stock in separate records. Derive the first default factors from
    full-year comparable observations; use monthly data and commissioning dates
    where reliable. Report the service excluded from this calibration population.
 4. Compute cohort-level output/capacity factors, normalize by the matching fleet
@@ -204,7 +204,7 @@ REMIND-team request is needed.
    observed in 2022 are not interpreted as causal age effects or projected trends.
 6. For vehicles, assess usage sources separately for cars and trucks. A mileage
    factor only maps directly to vehicle-kilometres. Passenger-kilometres require
-   occupancy and tonne-kilometres require payload/load-factor assumptions. If only
+   occupancy and tonne-kilometres require assumptions about weight carried and how full vehicles are. If only
    age-decay sensitivities are defensible, specify them before inspecting results
    and retain the equal-service default. If a usable non-exponential age table is
    found, implement an opt-in, tested age lookup; a fixed cohort factor is not an
@@ -214,7 +214,7 @@ REMIND-team request is needed.
    year quantiles and source/mass-balance diagnostics with the frozen baseline.
    Preserve stock-only outputs when only the service weights change.
 
-### Deliverables and acceptance
+### Results and checks
 
 - `power-generation-matches.csv`, `service-coverage.csv`,
   `service-factors.csv`, `vehicle-usage-source-assessment.md`,
@@ -231,44 +231,44 @@ REMIND-team request is needed.
   generation year. The current 2022 archive supports reconciliation and sensitivity
   analysis only; historical stock tests do not substitute for that missing check.
 
-## Planned code boundaries
+## Planned changes to the code
 
 Names below are proposed implementation targets, not existing public APIs.
 
 | Location | Responsibility |
 |---|---|
 | `src/iam_preprocessor/stock_observations.py` | Year-aware source readers; lossless identities/statuses; raw audit records |
-| `src/iam_preprocessor/data/remind_stock_assets.yaml` | Exact selectors, source boundaries and evidence labels |
-| `src/iam_preprocessor/stock_history.py` | Snapshot reconciliation and historical event ledgers |
-| `src/iam_preprocessor/stock_validation.py` | Historical experiments, metrics and leakage guards |
-| `src/iam_preprocessor/stock_service.py` | Generation joins, coverage, factors and fallback policies |
-| `stock_config.py`, `stock_vintages.py` | Only necessary opt-in service options; retain legacy configurations and namespace |
-| `examples/run_remind_evidence_campaign.py` | Reproducible staged campaign with a source manifest and explicit configuration |
+| `src/iam_preprocessor/research/remind/data/remind_stock_assets.yaml` | Exact variable names, what the sources cover, and evidence labels |
+| `src/iam_preprocessor/stock_history.py` | Match records between years and record past events |
+| `src/iam_preprocessor/stock_validation.py` | Run historical tests and keep the comparison data out of the estimates |
+| `src/iam_preprocessor/stock_service.py` | Match generation records and calculate use factors |
+| `stock_config.py`, `stock_vintages.py` | Add optional ways to estimate use and support existing settings and variable names |
+| `examples/run_remind_evidence_campaign.py` | Reproducible staged campaign with a source file list and explicit configuration |
 | `examples/plot_remind_evidence_campaign.py` | Standalone PDF, plots and their numeric tables |
-| `tests/test_stock_history.py`, `tests/test_stock_service.py` | Scientific and data-contract regressions with small synthetic fixtures |
+| `tests/test_stock_history.py`, `tests/test_stock_service.py` | Check the calculation and data formats using small made-up datasets |
 
 Reuse generic producer and consumer validation scripts. No initial premise or
 TRAILS runtime changes are expected. Any required consumer change must receive
 its own compatibility check and commit. Source files and generated scenarios
-remain outside version control; commit schemas, mapping provenance, scripts,
-documentation and small synthetic test fixtures.
+remain outside version control; commit schemas, sources of the variable mappings, scripts,
+documentation and small made-up test datasets.
 
-## Sequence and reviewable increments
+## Order of work
 
 | Increment | Work | Dependency | Reviewable result |
 |---|---|---|---|
-| A | Freeze protocol, preserve baseline, promote sources, add year-aware readers | None | New source manifest; observation schema and parsing tests |
+| A | Freeze protocol, preserve baseline, promote sources, add year-aware readers | None | New source file list; observation schema and parsing tests |
 | B | Exact asset mappings and same-year stock audit | A | Eleven-group discrepancy report; unresolved mappings classified |
 | C | Panels and historical evaluation | A and reviewed B boundaries | Frozen holdout metrics; failure analysis; no claimed totals prediction where totals were supplied |
-| D | Generation matching and vehicle-usage assessment | A and reviewed B boundaries | Coverage and service-factor candidates; complete fallback ledger |
-| E | Select qualified factors and run the current scenario | C and D | Before/after distributions; explicit promotion/retention decisions |
-| F | Producer/consumer regression and report | E | Independently validated output, PDF, Markdown assessment and artifact manifest |
+| D | Generation matching and vehicle-usage assessment | A and reviewed B boundaries | Data coverage, proposed use factors, and a record of alternative assumptions |
+| E | Select use factors and run the current scenario | C and D | Compare results before and after the changes and record which assumptions to keep |
+| F | Test the full workflow and write the report | E | Independently checked output, figures, report, and list of files |
 
 C and D can proceed independently once their boundaries are fixed. Changes are
 kept on the isolated feature branch; use separate commits for each increment.
 No external publication or communication is part of this package.
 
-## Definition of done
+## Checks before the study is complete
 
 - All eleven groups have a stock-comparison diagnosis, a historical evaluation
   result or explicit evidence limitation, and a service-weighting decision.
@@ -277,9 +277,9 @@ No external publication or communication is part of this package.
 - Every result can be reproduced from the new immutable evidence snapshot and
   a versioned campaign configuration. Held-out outcomes and promotion decisions
   are traceable; no failure disappears from the report.
-- Baseline tests and appropriate new tests pass; all new profiles pass serialized
-  source/stock/share checks and filtered/encrypted/cached runtime checks. Repeat
-  the signed-demand consumer checks for affected primary groups.
+- Run the old and new tests. Check the saved inputs, stocks, and shares and
+  compare filtered, encrypted, and cached results. Repeat the checks with
+  positive and negative demand for the main groups that changed.
 - A report compares the baseline and candidate profiles and distinguishes numerical
   validity, source reconciliation, empirical accuracy and remaining assumptions.
 - No acceptance criterion depends on obtaining more REMIND-team data or making
@@ -295,4 +295,4 @@ No external publication or communication is part of this package.
 - [DfT vehicle licensing tables](https://www.gov.uk/government/statistical-data-sets/vehicle-licensing-statistics-data-tables).
 - [Existing sector mappings and limitations](remind-sector-expansion.md).
 - [Current annualisation constraints](joint-stock-annualisation.md).
-- [Existing serialized/runtime validation](stock-vintage-validation.md).
+- [Existing checks on saved files and on use in other tools](stock-vintage-validation.md).

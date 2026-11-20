@@ -1,11 +1,11 @@
-Transport methodology
-=====================
+Transport calculations
+======================
 
-Energy-to-service conversion
-----------------------------
+Estimate travel from energy use
+-------------------------------
 
-For final energy in EJ/yr and specific consumption in MJ/service-km, the
-application uses:
+To estimate travel, divide the energy used by the energy needed per passenger
+or tonne-kilometre. The factor of 1,000 keeps the units consistent.
 
 .. math::
 
@@ -13,22 +13,23 @@ application uses:
    \frac{FE\;[\mathrm{EJ/yr}] \times 1000}
         {SEC\;[\mathrm{MJ/km}]}
 
-This corrects the notebook's factor of :math:`10^6`, which overstated synthetic
-services by a factor of 1,000. Passenger and freight units are assigned per row.
+Results are in billions of passenger-kilometres or tonne-kilometres per year.
+The earlier notebook used :math:`10^6`, which overstated the result by a factor
+of 1,000.
 
 IMAGE battery-electric trucks
 -----------------------------
 
-IMAGE's medium/heavy truck electricity contains both plug-in hybrids and, in
-later years, an additional component consistent with BEVs. For each region and
-year, the application reconstructs PHEV electricity from the 10, 30, and 60 km
-PHEV activity and intensity rows:
+IMAGE reports total electricity for medium and heavy trucks. The calculation
+first estimates electricity used by plug-in hybrid trucks (PHEVs) from their
+reported travel and energy per kilometre. It adds the results for the 10, 30,
+and 60 km electric-range groups.
 
 .. math::
 
    FE_{PHEV} = \sum_i ES_i \times SEC_{i,electricity} / 1000
 
-It then derives:
+It assigns the remaining electricity to battery-electric trucks (BEVs).
 
 .. math::
 
@@ -38,14 +39,14 @@ It then derives:
 
    ES_{BEV} = FE_{BEV} \times 1000 / SEC_{BEV}
 
-The full-BEV SEC is not present in IMAGE and must therefore be supplied by the
-user. World values are sums of regional results because IMAGE omits World PHEV
-efficiency rows. Material negative residuals are recorded and clipped unless
-strict mode is enabled.
+To estimate how much these trucks travel, supply their energy use per
+tonne-kilometre. The world total is the sum of the regions because IMAGE gives
+plug-in hybrid efficiency only by region. The tool reports substantial negative
+estimates and sets them to zero. In strict mode, it stops on those cases.
 
 Default assumptions
 -------------------
 
-The non-truck SEC values in ``default_sec.yaml`` are migrated verbatim from the
-notebook. Their source was not recorded there. Override and document them before
-using the results in published analyses.
+The energy-use values for other vehicles in ``default_sec.yaml`` come from the
+earlier notebook, which gives no source for them. Review and replace those
+values before using the results in published work.

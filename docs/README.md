@@ -1,31 +1,26 @@
-# Documentation map
+# Documentation
 
 ## Start here
 
-- [Repository overview](../README.md): installation, commands, and code map.
-- [Stock-vintage guide](stock-vintages.md): method, inputs, configuration,
-  outputs, and limitations.
-- [Command-line guide](usage.rst): short reference for the main commands.
-- [Python API](api.rst): generated module and function reference.
+- Installation, commands, and where to find the code. [Repository overview](../README.md)
+- How the calculation works and what it needs. [Stock-vintage guide](stock-vintages.md)
+- The main commands and options. [Command-line guide](usage.rst)
+- The Python modules and functions. [Python API](api.rst)
 
 ## Method detail
 
-- [Joint annualisation](joint-stock-annualisation.md): constrained reconciliation
-  of sparse stock and addition data.
-- [Validation strategy](stock-vintage-validation.md): scientific checks and
-  acceptance criteria.
-- [Security](security.rst): keys, encryption, and local data handling.
+- How the tool estimates missing annual additions using reported stock and
+  addition data. [Joint fit](joint-stock-annualisation.md)
+- How we check the estimates. [Validation plan](stock-vintage-validation.md)
+- How the tool handles keys and private files. [Security](security.rst)
 
 ## Research records
 
-The following files document the REMIND evidence campaign. They are retained for
-reproducibility and are not required to understand or run the core workflow.
+These notes describe how to repeat earlier REMIND studies.
 
-- [Evidence protocol](remind-evidence-protocol.md)
-- [Evidence work package](remind-evidence-work-package.md)
+- [Evidence collection and checks](remind-evidence-protocol.md)
+- [Research plan](remind-evidence-work-package.md)
 - [Evidence results](remind-evidence-results.md)
 - [Sector expansion](remind-sector-expansion.md)
 
-These records describe particular datasets and experiments. The current public
-software contract is defined by the stock-vintage guide, configuration validator,
-tests, and generated package manifest.
+For the current commands and file formats, see the stock-vintage and command-line guides above.

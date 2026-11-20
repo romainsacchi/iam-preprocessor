@@ -1,12 +1,9 @@
 # REMIND stock-vintage project: findings and restart report
 
-**Restart checkpoint, 27 October 2026.** Further implementation remains paused
-pending additional exact-run REMIND/EDGE-T data. This report is the entry point
-for resuming the project without the original conversation. Read the findings
-below, then the [restart instructions](#restart-instructions-and-project-checkpoint).
-The validation counts describe the completed 10 October campaign; they were not
-rerun for this documentation checkpoint. The current input/output audit and
-recovery gaps are recorded separately below.
+**Study status, 27 October 2026.** Work paused while the team waited for more
+data from the original REMIND/EDGE-T run. The validation counts refer to the
+study completed on 10 October. The sections below describe which files were
+checked and what was missing. [How to restart the study](#how-to-restart-the-study)
 
 **Input-semantics update:** the numerical campaign summarized here used the former
 power Weibull reinterpretation and period-window treatment of `New Cap`. The
@@ -30,7 +27,7 @@ make the retirement priors or future utilization empirically validated.
 | Group | 2020→2022 age W1: prior / no retirement (years) | Observed generation capacity coverage | Default decision |
 |---|---:|---:|---|
 | Passenger BEV | 0.044 / 0.043 | No eligible age-specific service evidence | Equal service; assumed age sensitivity |
-| Heavy trucks | 1.418 / 1.306 | Mileage only; payload not identified | Equal service; NAEI and assumed age sensitivities |
+| Heavy trucks | 1.418 / 1.306 | Mileage only; weight carried is unknown | Equal service; NAEI and assumed age sensitivities |
 | Passenger Liquids | 0.543 / 1.134 | Mileage only; occupancy not identified | Equal service; petrol/diesel usage sensitivities on the combined fleet |
 | PV | 0.029 / 0.014 | 77.0% | Retain WECC default; national generation-factor sensitivity |
 | CCGT | 0.884 / 0.051 | 80.5% | Retain WECC default; national generation-factor sensitivity |
@@ -62,8 +59,8 @@ source row/sheet and hashes. It preserves missing quantities and does not treat
 cancelled projects with missing capacities as measured zero-capacity assets.
 The UK reader retains 2014–2025 first-use cohorts and unknown ages separately.
 
-The versioned `data/remind_stock_assets.yaml` registry declares all eleven
-crosswalks, units and limitations. Source ledgers test status, CHP, geographic
+The versioned `research/remind/data/remind_stock_assets.yaml` registry declares all eleven
+category matches, units and limitations. Source records test status, CHP, geographic
 and nameplate/seasonal-rating alternatives. National power observations and UK
 vehicles are kept in their original populations for historical evaluation.
 
@@ -74,7 +71,7 @@ Key diagnoses:
   this does not establish the correctness of the future scenario trajectory.
   The initial source still has only two operating generator records.
 - Gas turbines: the ratio remains about 0.35 at the 2020 anchor and 0.34 in
-  2022. The native technology/CHP crosswalk is unresolved.
+  2022. The native mapping of technologies and combined heat and power is unresolved.
 - PV: distributed-generation coverage and AC/DC rating boundaries are unresolved.
   The national audit does not replace the earlier selected WECC stock cohorts.
 - CCGT: component operating dates need not represent whole-block construction;
@@ -88,11 +85,11 @@ Key diagnoses:
 
 ## Priority 2: historical evaluation
 
-`stock_validation.py` implements three separate experiment contracts:
+`stock_validation.py` implements three experiments:
 
 - **A:** opening-cohort conditional survival. Power metrics use confirmed
   operating retention in opening-capacity units; unresolved identity, category
-  and date changes are excluded with a coverage ledger. Vehicle results measure
+  and date changes are excluded with a record of available data. Vehicle results measure
   net licensed cohort retention, which also reflects trade and reactivation.
 - **B:** independently observed additions. The model interface is tested, but
   this campaign reports the experiment as unsupported. Closing-stock youngest
@@ -102,7 +99,7 @@ Key diagnoses:
   the withheld later composition afterwards. Conditioned totals receive no
   prediction credit.
 
-The transition ledger reconciles continuing units, capacity changes, reported
+The record of changes reconciles continuing units, capacity changes, reported
 retirements, status/boundary changes, revised cohort dates, newly covered old
 assets, dated new entries and unresolved disappearances. It does not equate
 absence from a later survey with scrappage.
@@ -137,8 +134,9 @@ proxies on the unchanged earlier cohort quantities.
 The NAEI report supplies historical relative mileage curves in Tables 5-2 and
 5-3. Its 2019 New Fleet petrol/diesel curves and HGV curve are optional
 sensitivities. They do not establish future passenger-km or tonne-km by age.
-Constant occupancy/payload and stationarity are explicit assumptions; factors
-beyond age 24 hold the last reported value. No suitable BEV curve was identified.
+We assumed that passenger counts, weight carried, and the relationship between
+age and mileage stay constant over time. Beyond age 24, the calculation uses
+the last reported value. We found no suitable curve for battery-electric cars.
 All vehicle defaults remain equal service. Three additional assumed absolute-age
 3% decay cases provide a common comparison. See the [NAEI report](https://naei.energysecurity.gov.uk/sites/default/files/2025-03/4_NAEI_Improvement_Report_Road_Transport_Fleet_Turnover_Model_Development.pdf).
 
@@ -163,13 +161,13 @@ retain their behavior. The curve checksum is included in the processing report.
 
 This changes the distribution of the existing production coefficient over
 service-producing cohorts. It changes neither the stock reconstruction nor the
-total inventory production coefficient. Consumer namespace `Stock Vintage|v1|`
+total inventory production coefficient. Output variable prefix `Stock Vintage|v1|`
 and common amortisation remain unchanged.
 
 ## Verification
 
 - 78 producer tests pass, including year-aware source schemas, missing values,
-  ambiguous generation, coverage gates, retention/conditioning contracts,
+  ambiguous generation, minimum data coverage requirements, rules for tracking assets already in use,
   evolving annual-age profiles, physical bounds and coefficient invariants.
 - Ruff, formatting and Sphinx documentation checks pass.
 - 106 accepted cases, 3,074 annual profiles and all 1,545,099 original IAM anchor
@@ -191,7 +189,7 @@ No premise or TRAILS runtime changes were required. Paired consumer revisions:
 Raw observations, private scenarios and generated outputs remain outside Git.
 The immutable historical snapshot is
 `/Users/romain/Library/Application Support/trails/stock-vintage-evidence/2026-10-10-validation`;
-its manifest checksum is
+its file list checksum is
 `18efb92c24a92a46629f48be0484d58e1dac1e07ca2e1b02b11f6f8651e1f0e1`.
 A separate `2026-10-10-validation-supplemental` snapshot pins the NAEI PDF without
 mutating the frozen historical protocol.
@@ -213,7 +211,7 @@ Use the existing filtered/encrypted/runtime workflow in
 [stock-vintage-validation.md](stock-vintage-validation.md) with this output and
 configuration. The eleven-group exporter is
 `examples/export_sector_runtime_fixture.py`. Run paired premise
-`check_iam_enrichment_runtime.py`, export constant/varying fixtures, then paired
+`check_iam_enrichment_runtime.py`, export test datasets with constant or changing inputs, then paired
 TRAILS `check_iam_enrichment.py` on the integration directory. Isolate caches and
 Brightway data; use a random local encryption test key and delete it after the
 checks. The campaign output includes the cache-isolation wrapper and logs.
@@ -223,19 +221,19 @@ script available in Git history at `0e2359b:examples/plot_remind_evidence_valida
 
 The historical completed output location was
 `/Users/romain/GitHub/trails/build/reports/remind-npi2025-evidence-validation`.
-That directory is absent at the restart checkpoint; recover or regenerate it
-as described below. Expected outputs are `assessment.md`,
+That directory was missing when the study paused. The steps below describe
+how to recover or recreate it. Expected outputs are `assessment.md`,
 `remind-evidence-validation-report.pdf`, seven PNG figures,
-`distribution-plot-data.csv`, the source/transition/generation ledgers and
-`artifact-manifest.json`. The report distinguishes remaining empirical gaps from
+`distribution-plot-data.csv`, records of sources, stock changes, and generation,
+and `artifact-manifest.json`. The report distinguishes gaps in the observations from
 passed software/accounting checks. Source definitions:
 [EIA-860](https://www.eia.gov/electricity/data/eia860/),
 [EIA-923](https://www.eia.gov/electricity/data/eia923/),
 [DfT licensing tables](https://www.gov.uk/government/statistical-data-sets/vehicle-licensing-statistics-data-tables).
 
-## Restart instructions and project checkpoint
+## How to restart the study
 
-### Scope, architecture and accounting decisions
+### Scope, workflow and accounting choices
 
 The reviewed producer is one scenario, `REMIND / SSP2-NPi2025`, for annual
 service years **2022–2050**. Transport assets are `passenger-bev`, `heavy-trucks`
@@ -243,8 +241,8 @@ and `passenger-liquids` in EUR. Power assets are `pv`, `ccgt`, `wind-onshore`,
 `wind-offshore`, `nuclear`, `gas-turbine`, `geothermal` and `csp` in USA.
 `passenger-liquids` combines petrol and diesel; fuel-specific initial-state and
 usage sensitivities are not separate IAM fleet forecasts. The earlier bounded
-pilots also covered `SSP2-PkBudg650` and an external-data water case; those do
-not extend the eleven-group producer's validated scenario scope.
+pilots also covered `SSP2-PkBudg650` and a water case based on separate data.
+The checks described here cover the stated scenario and eleven groups.
 
 The workflow is:
 
@@ -253,7 +251,7 @@ original IAM stock/capacity + gross additions/sales + service + lifetime inputs
   + observed initial cohorts + explicit survival/utilisation assumptions
   -> iam-preprocessor: annual cohort stocks and service shares
   -> enriched CSV and matching hashed JSON report, optional filtering/encryption
-  -> premise: exact annual profile access and explicit inventory bindings
+  -> premise: read annual build-year shares and link them to inventory exchanges
   -> TRAILS: dated manufacturing pulses, with stock_vintage=True
 ```
 
@@ -289,14 +287,14 @@ Preserve these decisions when restarting:
   unresolved technology boundaries remain assumptions. Do not promote global
   defaults or extend post-2050 reporting semantics without new evidence.
 
-### Code checkpoints and where to work
+### Git commits and branches used
 
 The remote branch tips below were checked directly on 27 October 2026, before
-this report update. All project worktrees were clean. The main
+this report update. All project checkouts were clean. The main
 `iam-preprocessor` checkout was on an unrelated PyPSA experiment with pending
-changes; use the feature worktree rather than changing that checkout.
+changes; use the feature checkout rather than changing that checkout.
 
-| Repository and purpose | Branch | Checkpoint before this report |
+| Repository and purpose | Branch | Commit before this report |
 |---|---|---|
 | [iam-preprocessor](https://github.com/romainsacchi/iam-preprocessor/tree/feat/stock-evidence-validation), complete eleven-group producer | `feat/stock-evidence-validation` | `0e2359b5895b790a97c1d633674435945b392c96` |
 | [premise](https://github.com/polca/premise/tree/feat/iam-stock-vintage-enrichment), annual reader/export | `feat/iam-stock-vintage-enrichment` | Tested: `8a8376155b316745734f29ae01c4e656424c38d2`; remote: `13a26fb733cbdce038d94cc8d94c39b370766e62` |
@@ -306,30 +304,29 @@ changes; use the feature worktree rather than changing that checkout.
 The premise remote has one later commit, `13a26fb7` (`Black reformating`). The
 recorded integration evidence used `8a837615`; reproduce that revision before
 testing the later branch tip. Do not describe an untested tip as the tested pair.
-Use the commit containing this report as the documentation checkpoint; its
-parent producer checkpoint is the hash in the table. Branches remain separate
-from main; this checkpoint does not merge or release them.
+Use the table to identify the code versions used for this report. The branches
+were still separate from `main` when the study paused.
 
-Existing local worktrees are:
+Existing local checkouts are:
 
 ```text
 /Users/romain/GitHub/iam-preprocessor-evidence-validation
 /Users/romain/GitHub/premise-iam-stock-vintages
 /Users/romain/GitHub/trails-iam-stock-vintages
-/Users/romain/GitHub/trails                         # pilot checkpoint branch
+/Users/romain/GitHub/trails                         # branch used for the pilot
 ```
 
 Producer history: `b5d5067` (flodym reconstruction), `409e1de` (joint annualisation),
 `83cf844b169a9057131cf906941488701b58a50d` (eleven-group comparison baseline),
 `4eda2aa` (frozen evidence plan), `5c79f1c` (evidence implementation), `0e2359b`
 (completed campaign). The complete producer branch contains these stages;
-separate old feature worktrees are not needed except to regenerate a baseline.
+separate old feature checkouts are not needed except to regenerate a baseline.
 
 Relevant source and documentation:
 
 - Producer: `src/iam_preprocessor/stock_{config,model,annualisation,vintages}.py`,
   `stock_{observations,history,validation,service,usage}.py`,
-  `src/iam_preprocessor/data/remind_stock_assets.yaml`, and the `examples/`
+  `src/iam_preprocessor/research/remind/data/remind_stock_assets.yaml`, and the `examples/`
   scripts named in this report.
 - [Schema and configuration](stock-vintages.md),
   [joint annualisation](joint-stock-annualisation.md),
@@ -344,7 +341,7 @@ Relevant source and documentation:
 - TRAILS integration: `trails/stock_vintage.py`,
   `docs/stock-vintage-development.md`, and
   `dev/stock_vintage/check_iam_enrichment.py` at the tested revision.
-- TRAILS pilot checkpoint: `docs/remind-stock-vintage-data-specification.md`,
+- TRAILS pilot status: `docs/remind-stock-vintage-data-specification.md`,
   `docs/remind-stock-vintage-robustness-plan.md`, and
   `dev/stock_vintage/diagnose_remind_reconstruction.py`. The older roadmap's
   four-technology/2030 limitations describe the bounded pilots; use this report
@@ -358,17 +355,17 @@ Preserve it separately from Git; it contains licensed inventories and IAM data.
 Keep encryption keys outside both Git and this report. Raw data, generated
 profiles and full-inventory packages are not included in the code push.
 
-| Archive below the private root | Manifest SHA-256 | Audit on 27 October |
+| Archive below the private root | File list SHA-256 | Audit on 27 October |
 |---|---|---|
-| `2026-10-10-pilots` | `c15467bdb209ece5c556248c16edc6257dae034dd121b9a6c935b4f5fe726231` | All 163 manifest-listed files SHA-256 verified |
-| `2026-10-10-validation` | `18efb92c24a92a46629f48be0484d58e1dac1e07ca2e1b02b11f6f8651e1f0e1` | 13 available manifest inputs hash-verified; two external baseline artifacts missing |
+| `2026-10-10-pilots` | `c15467bdb209ece5c556248c16edc6257dae034dd121b9a6c935b4f5fe726231` | All 163 listed files match their recorded fingerprints |
+| `2026-10-10-validation` | `18efb92c24a92a46629f48be0484d58e1dac1e07ca2e1b02b11f6f8651e1f0e1` | 13 files checked. Two comparison files were missing. |
 | `2026-10-10-validation-supplemental` | `b8108dada4726d430f266dbcc37d6588c11887345dccd8b5b9e8327c73a57f52` | NAEI PDF hash-verified |
 
 The pilots archive contains `cohorts/`, `iam-inputs/`, `public-sources/`,
 restricted full-inventory evidence, source snapshots and environment inventories.
 Its pinned source snapshots describe the earlier pilots, not the latest
-eleven-group producer; use the Git checkpoints above for that producer.
-The validation manifest pins EIA-860 2020–2022, EIA-923 2022, DfT vehicle tables,
+eleven-group producer; use the Git commits above for that preprocessor.
+The validation file list pins EIA-860 2020–2022, EIA-923 2022, DfT vehicle tables,
 archived EDGE/reporttransport code, the scenario, protocol and campaign YAML.
 Some entries refer into the pilots archive; retain the entire private root.
 
@@ -383,7 +380,7 @@ Critical file identities:
 
 Both the sector-expansion baseline directory and the completed evidence output
 directory under `/Users/romain/GitHub/trails/build/reports/` are absent. Therefore
-the reproduction command above cannot currently pass the frozen manifest gate.
+the reproduction command above cannot currently pass the checks against the original file list.
 Recover the whole baseline directory from a private backup if available: the
 JSON/CSV alone are insufficient. Its config and all initial-cohort files
 referenced by that config are also needed. Otherwise regenerate as below.
@@ -396,7 +393,7 @@ environments and check imported module paths. `pdftotext` is available locally.
 
 ### Restart sequence and baseline recovery
 
-1. Inspect worktree status, select the checkpoints above, and verify the private
+1. Check for local changes, select the commits above, and verify the private
    manifests before changing data. Retain the original manifests unmodified.
 2. Prefer exact native cohort data if they have arrived. Apply the acceptance
    checks below before adapting the producer. Otherwise reconstruct the old
@@ -410,11 +407,11 @@ Use Python 3.11 for the producer and TRAILS, with an isolated premise environmen
 compatible with its pinned source. Install the producer's `.[stocks,dev]` extra
 plus matplotlib; `flodym==1.1.0` is pinned. Install each consumer from its paired
 source, using its declared requirements. Do not overwrite shared environments.
-The pilot archive manifest retains earlier complete package inventories;
+The pilot archive file list retains earlier complete package inventories;
 those inventories are historical evidence, not a lockfile for the new producer.
 
 ```bash
-# Run from a clean producer worktree; set these to absolute local paths first.
+# Run from a checkout with no local edits. Set these to absolute paths first.
 export VINTAGE_PRIVATE_ROOT='/Users/romain/Library/Application Support/trails/stock-vintage-evidence'
 export VINTAGE_RUN_ROOT='/absolute/private/path/to/a/new-resume-run'
 export VINTAGE_PRODUCER='/Users/romain/GitHub/iam-preprocessor-evidence-validation'
@@ -435,8 +432,8 @@ PYTHONPATH=src "$VINTAGE_PY" examples/run_remind_sector_expansion.py \
 
 Report bytes contain absolute paths, dependency versions and implementation
 hashes. A regenerated baseline may therefore differ from the historical hashes;
-that is not an exact restoration. Keep the old manifest and create a **new
-explicitly labelled recovery manifest**, preserving unchanged source pins and
+that is not an exact restoration. Keep the old file list and create a **new
+explicitly labelled file list for the recovered run**, preserving unchanged source pins and
 recording the replacement baseline and its origin. The following does that for
 the existing campaign runner without bypassing its hash checks:
 
@@ -475,15 +472,15 @@ PYTHONPATH=src "$VINTAGE_PY" examples/validate_stock_output.py \
   "$VINTAGE_RUN_ROOT/evidence/REMIND_generic_SSP2-NPi2025_stock_vintages_report.json"
 ```
 
-If an exact backup is restored instead, use the original frozen manifest and
-original command. A recovered or regenerated run must retain its own provenance
+If an exact backup is restored instead, use the original file list and
+original command. A recovered or regenerated run must record its own sources
 and newly executed results. Do not copy the historical pass counts into a new
 validation record without running the checks.
 
-### Runtime reproduction and verification gates
+### How to repeat the checks in premise and TRAILS
 
 Prepare the new evidence directory and a random Fernet test key with mode 0600.
-From the producer worktree, run the integrated command on the pinned source MIF,
+From the preprocessor checkout, run the integrated command on the pinned MIF input file,
 using the new evidence config `remind-npi2025-stock-config.yaml`:
 
 ```bash
@@ -508,12 +505,12 @@ PYTHONPATH=src "$VINTAGE_RUN_ROOT/producer-env/bin/iam-preprocessor" stock-vinta
 ```
 
 For premise's filename lookup, copy each plain/encrypted output CSV byte for
-byte to `remind_SSP2-NPi2025.csv` inside its respective runtime directory. Also
+byte to `remind_SSP2-NPi2025.csv` inside its respective test directory. Also
 copy the unfiltered evidence CSV to that accepted name in the evidence root.
 Retain the original report filenames; copying under an accepted source name
 preserves hashes, whereas rewriting or separately filtering it does not.
-Copy `sector-observation-audit.json` from the recovered baseline directory into
-the evidence directory: the eleven-group fixture exporter reads that catalogue.
+Copy `sector-observation-audit.json` from the recovered comparison folder into
+the evidence folder. The export script uses it to find the eleven groups.
 
 ```bash
 "$VINTAGE_PY" - <<'PY'
@@ -552,22 +549,21 @@ cd "$VINTAGE_TRAILS"
 The TRAILS checker accepts the integration parent and checks both constant and
 varying packages. Require 176 passing signed cases across the eleven primary
 assets, exact event years, absent-year rejection and unchanged coefficients.
-The runtime reader must verify matching source/report hashes for plain,
+The program that reads the results must verify matching source/report hashes for plain,
 encrypted and cached profiles. Remove the disposable test key after these
 checks; retain logs and hashes, not the secret.
 
-Run producer Ruff/format, pytest and Sphinx commands from the earlier validation
-section after implementation changes. Run premise's `test_iam_stock_vintage.py`
+After code changes, run the Ruff, pytest, and Sphinx checks from the earlier
+validation section. Run premise's `test_iam_stock_vintage.py`
 and relevant stock-export tests, and TRAILS' stock-vintage/lifecycle tests when
 their interfaces or routing change. Preserve new dependency versions and exact
 Git revisions with the run. The three release requirements remain accounting
-conservation, defensible reconstruction and actual producer-consumer evidence.
+conservation, defensible reconstruction and tests that run from preprocessing through TRAILS.
 
 ### Exact REMIND/EDGE-T data request and first work after arrival
 
 The user paused the project on 10 October to request additional REMIND variables.
-No response or new exact-run extract is established by this checkpoint. This
-report update does not resume modelling or contact providers.
+At the time of this update, the team was still waiting for those variables.
 
 Request tables keyed by **run/scenario × region × native technology/class/grade
 × evaluation year/period × original construction/commissioning vintage**:
@@ -578,9 +574,9 @@ Request tables keyed by **run/scenario × region × native technology/class/grad
 | 1 | Electricity generation or transport service by the same vintage, with mileage/load/occupancy where represented | Replace assumed utilisation weights; distinguish capacity from service fidelity |
 | 2 | Gross new entries and retirements by vintage, distinguishing natural, early, idle/reactivated and territorial exits | Reproduce the stock equation without inventing balancing flows or physical disposal |
 | 2 | Actual survival/depreciation schedules, initialisation and early-exit rules from the run | Reproduce cohorts when direct outputs are unavailable |
-| Required metadata | Run/model/config/input hashes; EDGE/reporttransport/remind2 versions; regional and technology crosswalks; units and native reporting windows | Establish exact-run and MIF reporting identity |
+| Required metadata | Run/model/config/input hashes; EDGE/reporttransport/remind2 versions; tables matching regions and technologies; units and native reporting windows | Establish original run and MIF reporting identity |
 
-For transport, explicitly ask for exact-run equivalents of
+For transport, explicitly ask for original run equivalents of
 `fleetVehNumbersConstrYears`, `fleetESdemandConstrYears` and
 `reportEarlyRetirement`. For power, native capacity-equation leads include
 `vm_deltaCap`, `vm_cap`, `pm_omeg`, `pm_ts` and `vm_capEarlyReti`; confirm their
@@ -598,7 +594,7 @@ The folder label `remind 3.5.2` is not proof of exact model/reporting lineage.
 
 On arrival, work in this order:
 
-1. Freeze the new extract and metadata in a new private manifest, retaining the
+1. Freeze the new extract and metadata in a new private file list, retaining the
    current reconstruction as the comparator. Check unique keys, units, missing
    dimensions, compatible stock dates and reporting precision.
 2. Sum native cohorts to native stock/service totals, then reproduce the native
@@ -609,7 +605,7 @@ On arrival, work in this order:
    observation-initialised reconstructions and regional proxies distinguishable.
 4. Add a small native-data adapter and compare full annual distributions,
    service weights and residuals with this eleven-group baseline. Preserve
-   existing namespaces/contracts unless a separately versioned change is needed.
+   existing variable names and file formats unless a separately versioned change is needed.
 5. Extend historical and service validation, then review post-2050 five-to-ten-
    year reporting transitions, selective exits, broader regions/scenarios and
    varying real-inventory backgrounds. Components/disposal remain separately
@@ -624,12 +620,12 @@ For historical context only, the original Codex conversation was
 `01a120ca-cf45-7060-82a9-9d12956412e9`. All restart decisions and paths needed
 from that discussion are recorded above; the chat transcript is not an input.
 
-### Checks performed for this documentation checkpoint
+### Checks performed for this update
 
 All 163 private pilot archive files, the 13 available frozen-validation inputs
 and the supplemental NAEI PDF match their recorded SHA-256 hashes. The two
 missing baseline artifacts remain explicitly identified above. Embedded shell
 and Python snippets passed syntax checks, local Markdown document links resolve,
 the Sphinx build passed with warnings treated as errors, and Git whitespace
-checks passed. Numerical reconstruction and consumer integration were not rerun;
-the recovery commands are documented procedures, not newly executed evidence.
+checks passed. This update records how to recover the inputs. The results above
+still come from the original calculations and tests.

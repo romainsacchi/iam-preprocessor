@@ -1,29 +1,37 @@
 Command-line usage
 ==================
 
-IMAGE
------
+Prepare scenario files
+----------------------
 
-Process a file or every supported file directly inside a directory:
+Process files or every supported file directly inside a directory.
 
 .. code-block:: console
 
-   iam-preprocessor image INPUT... --output-dir OUTPUT \
+   iam-preprocessor prepare INPUT... --output-dir OUTPUT
+
+By default, ``prepare`` puts the table in a standard format and keeps the rows
+listed in the export filter. Use ``--no-filter`` to keep every input row.
+For a workbook with several scenarios, use ``--scenario LABEL`` and add
+``--model LABEL`` when the same scenario name occurs under multiple models.
+Use the exact labels shown by ``stock-inventory``.
+
+Optional model adapters
+-----------------------
+
+Choose an adapter when you need the corrections it applies to your model's file.
+
+.. code-block:: console
+
+   iam-preprocessor prepare INPUT... --output-dir OUTPUT --adapter image \
        --medium-bev-sec VALUE --heavy-bev-sec VALUE
+   iam-preprocessor prepare INPUT... --output-dir OUTPUT --adapter message
+   iam-preprocessor prepare INPUT... --output-dir OUTPUT --adapter remind
 
-Use ``--sec-config`` to load reviewed assumptions from YAML, ``--strict`` to
-reject material negative BEV residuals, and ``--skip-bev`` to disable that
-derivation explicitly. Directory processing excludes names containing
-``_filtered`` or ``_allocated`` to prevent accidental reprocessing.
-
-MESSAGE and REMIND
-------------------
-
-.. code-block:: console
-
-   iam-preprocessor message INPUT... --output-dir OUTPUT
-   iam-preprocessor remind INPUT... --output-dir OUTPUT
-
+The IMAGE adapter estimates transport use from energy use. Use ``--sec-config``
+to load assumptions from YAML. Use ``--strict`` to stop if the calculation gives
+a substantial negative value for battery-electric truck energy, or ``--skip-bev``
+to skip that calculation.
 MESSAGE processing strips ``R12_`` from region labels and removes ``GLB``.
 REMIND processing removes legacy aggregate regions and splits cement production
 and energy into CCS and non-CCS portions.
@@ -31,18 +39,20 @@ and energy into CCS and non-CCS portions.
 Stock vintages
 --------------
 
-Inspect REMIND coverage, create a configuration, and reconstruct annual cohorts:
+List the input variables, check the YAML settings, and estimate the build-year groups.
 
 .. code-block:: console
 
-   iam-preprocessor remind-stock-inventory scenario.mif -o stock-inventory.csv
-   iam-preprocessor remind-stock-config scenario.mif -o stocks.yaml \
-       --reconciliation joint
-   iam-preprocessor stock-vintages scenario.mif --config stocks.yaml \
+   iam-preprocessor stock-inventory scenario.csv -o stock-inventory.csv
+   iam-preprocessor stock-config scenario.csv --mapping stock-mapping.yaml -o stocks.yaml
+   iam-preprocessor stock-inventory scenario.csv --config stocks.yaml -o mapped-inputs.csv
+   iam-preprocessor stock-vintages scenario.csv --config stocks.yaml \
        --output-dir output/stocks --package-only
 
-The result is a preliminary reconstruction from IAM variables and declared
-assumptions. See ``docs/stock-vintages.md`` for the method and limitations.
+The estimate depends on the IAM data and assumptions. ``stock-inventory`` can
+list a file with several scenarios. Choose a single model and scenario before
+making the settings file and running the calculation. See
+``docs/stock-vintages.md`` for the method and limitations.
 
 Filtering and cryptography
 --------------------------

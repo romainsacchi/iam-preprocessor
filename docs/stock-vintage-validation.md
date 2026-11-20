@@ -16,7 +16,7 @@ its old future projections are not inputs to the new reconstruction.
 | Group | Existing inputs used | Explicit reconstruction choice | Remaining uncertainty |
 | --- | --- | --- | --- |
 | Passenger BEVs, EUR | REMIND Four Wheelers BEV stock/sales/service; UK 2022 first-use cohorts | REMIND serviceLife 20 years used as Weibull mean, with shape 3 an explicit non-REMIND assumption; equal service initially; stock- and inflow-driven cases | UK-to-EUR composition transfer; first use versus manufacture; unknown/old cohorts retained only as curated; true survival and mileage by age |
-| Heavy trucks, EUR | REMIND liquid-fuel 40-tonne stock/sales/service; UK articulated diesel 32–40 t cohorts | REMIND serviceLife 15 years used as Weibull mean, with shape 3 an explicit non-REMIND assumption; equal service initially | Weight/fuel crosswalk, mileage/payload/empty running, older/unknown registration dates, territorial exits versus disposal |
+| Heavy trucks, EUR | REMIND liquid-fuel 40-tonne stock/sales/service; UK articulated diesel 32–40 t cohorts | REMIND serviceLife 15 years used as Weibull mean, with shape 3 an explicit non-REMIND assumption; equal service initially | Matching by weight and fuel, distance driven, weight carried, and trips without cargo, older/unknown registration dates, territorial exits versus disposal |
 | PV, USA | REMIND PV capacity/new capacity/generation/lifetime; selected US-WECC crystalline plant cohorts and output | Native REMIND maximum-lifetime survival `max(0, 1-(age/tau)^4)`; initial observed output/capacity factors | Regional/system/AC–DC boundary; future degradation and curtailment allocation |
 | CCGT, USA | REMIND unabated combined-cycle capacity/additions/generation/lifetime; selected non-CHP WECC blocks | Native REMIND maximum-lifetime survival; explicit proportional additional exits in stock mode | Dispatch, idle versus retired capacity, refurbished/old units and selective retirement; no gas-wide idle variable assigned to CCGT |
 | Water infrastructure | Existing Quebec pipe/storage observations and reviewed pilot | Keep separate external-data constant-stock scenario | No reviewed matching REMIND stock/additions series; no IAM-derived water forecast |
@@ -60,18 +60,19 @@ pilots remain unchanged; their lifecycle regression tests still apply.
 
 ### 2. Defensible reconstruction and uncertainty
 
-Test fixed-life replacement against an analytical solution; compare compatible
-cases against flodym's own stock/inflow-driven solvers. Verify conditional
-initial survival, cohort-specific new lives, declines, zero-stock restart,
-reporting-period integrals, units and infeasible conditions. Selected missing
-or nonfinite data, duplicate rows and incomplete reporting windows fail.
+Test replacing assets with a fixed lifetime against a result calculated by hand.
+Compare equivalent cases with FLODyM. Check survival of the starting stock,
+lifetimes that vary by build year, declines, recovery from zero stock, totals for
+reporting periods, units, and cases that cannot be matched. The tool should stop
+on missing or invalid selected values, duplicate rows, or incomplete reporting periods.
 
-For the real file, preserve every original anchor to floating-point serialization
-precision, verify every cohort's nonnegativity and chronology, reconcile cohort
-quantities/shares/service totals, independently recompute stock balances, and
-report residuals relative to the unused stock or inflow constraint. Power cases
-enforce a declared 8760-hour service/capacity bound. Plot age distributions and
-lifetime, service-exposure, utilization and initial-state sensitivities.
+For the scenario file, check that each original value is preserved to the
+precision used to write it. Check that each group's stock is nonnegative and
+appears only in or after its build year. Check that stock and use sum correctly,
+recalculate the stock balance, and show differences from whichever input series
+was used only as a check. Power generation must fit within 8760 hours of
+full-load operation per year. Plot how the age breakdown changes when you vary
+lifetimes, use during the year, and the ages of the starting stock.
 
 Negative implied exits for BEV/PV diagnose disagreement in the independently
 annualized input constraints. They do not prove REMIND itself is inconsistent.
@@ -79,11 +80,11 @@ Truck/CCGT totals can be feasible while still disagreeing with a chosen survival
 or additional-exit model. Joint mode now preserves native stock anchors, checks
 inflow-constraint feasibility and smooths annual additions. Incompatible inflows
 are rejected or receive an explicitly configured penalty; all residuals remain
-visible. Independent serialized-output checks compare its constraints with source
+visible. Independent checks of the saved results compare its constraints with source
 values and complete reporting windows, including internal years beyond export
 coverage. Analytical tests cover five/ten-year windows and legacy compatibility.
 
-### 3. Actual producer–consumer evidence
+### 3. Tests that run from preprocessing through TRAILS
 
 Use the actual enriched SSP2-NPi2025 file through premise's real IAM reader,
 including source/report verification and cached reads. Test filtering and
@@ -91,13 +92,12 @@ Fernet encryption through the public preprocessing CLI. Feed the four primary
 profiles to the actual premise matrix/datapackage exporter, then load in TRAILS
 with annual interpolation and explicit stock-vintage opt-in.
 
-The new integration fixture uses **actual IAM-derived profiles and a synthetic
-inventory** with coefficients matching the earlier pilot units. It checks exact
-pulses and signed LCI against an independent analytical result for both constant
-and changing background intensities. It proves the new interface and calendar
-semantics. It is not a new full ecoinvent regional LCA or independent empirical
-validation. The earlier complete licensed-pilot evidence is retained separately;
-there is no automatic release of global default stock distributions.
+The test uses build-year shares from the IAM and a made-up inventory with the
+same units as the earlier pilot. It checks the dates and amounts in the
+life-cycle inventory for positive and negative demands against a calculation
+done separately. It runs with both constant and changing background data. This
+checks that the dates and amounts pass between the tools. The regional LCA
+results using licensed data remain in the earlier pilot.
 
 ## Reproduction
 
@@ -111,7 +111,7 @@ python examples/run_remind_stock_pilot.py \
 ```
 
 The script writes local initial-cohort CSVs, an explicit YAML config, one enriched
-scenario, its JSON report, a source manifest, mean-age tables and two PDF/PNG
+scenario, its JSON report, a source file list, mean-age tables and two PDF/PNG
 figures. Output must be a new/empty directory. No scenario or observation data
 is shipped in Git. The standard CLI can also be used with a hand-reviewed config.
 
@@ -120,7 +120,7 @@ its bytes, and use the paired premise branch's
 `dev/stock_vintage/export_iam_enrichment_fixture.py`. Then run the paired TRAILS
 branch's `dev/stock_vintage/check_iam_enrichment.py` on the integration output.
 These scripts identify their inventory as synthetic. Use separate local
-Brightway directories via `BRIGHTWAY2_DIR` when running fixture tests.
+Brightway directories via `BRIGHTWAY2_DIR` when running tests using those example datasets.
 
 Required checks:
 
@@ -150,5 +150,5 @@ the selected survival and fixed exit fractions. Remaining priorities are
 comparing selective exit assumptions; historical
 backtesting with already available public observations; age-specific vehicle
 use and plant dispatch/degradation; within-year exposure/retirement integration;
-and a broader geography/technology crosswalk. Exact-run fidelity, empirical
+and a broader table matching regions and technologies. Original run fidelity, empirical
 calibration and service allocation cannot be established by changing libraries.

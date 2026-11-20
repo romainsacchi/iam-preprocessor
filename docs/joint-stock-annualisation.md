@@ -1,31 +1,27 @@
-# Joint annual additions and stock reconstruction
+# Fitting annual additions to reported stock
 
-This optional `mode: joint` addresses steps in reconstructed vintage composition
-caused by piecewise-linear interpolation of IAM stock. It uses the same observed
-initial cohorts, configured survival matrices and service-weighting contract as the
-existing `stock` and `inflow` modes. Regional composition proxies remain explicit
-accepted pilot assumptions. It does not smooth observed historical cohorts or
-post-process the final histograms.
+Use `mode: joint` to estimate annual additions when the IAM reports stock and
+additions at intervals. This can avoid sudden jumps in the estimated build-year
+mix when reported stock grows at different rates between reporting years. The
+calculation uses the same starting ages, lifetime curves, and assumptions about
+use as the other modes. It keeps the observed starting groups as supplied.
 
-## Source semantics and constraints
+## How reported values are used
 
-- **Stocks/capacities:** original IAM anchor years are exact constraints.
-  Intermediate stocks emerge from surviving initial cohorts and annual additions.
-- **Sampled annual additions/sales:** the reported years constrain annual entries
-  at those years. Interpolated values supply a weak reference trajectory, not
-  extra data. This is the adopted REMIND `New Cap` and `Sales` interpretation.
-- **Reported period-average additions:** annual entries are constrained by the
-  average over each explicit window. A 10 GW/year five-year observation therefore
-  constrains 50 GW of additions, not 10 GW of additions in the reporting year.
-  Ten-year windows constrain ten annual entries, with no assumed fixed step width.
-- **Lifetimes:** unchanged conditional survival under the configured lifetime law; historical initial stocks
-  are survivors, not historic sales. Future lifetimes retain their cohort indexing.
-- **Additional exits:** `exit_policy: error` allows none. With `proportional`, the
-  annual extra-exit fractions from the existing linear-stock reconstruction are
-  fixed before fitting. They apply proportionally to naturally surviving cohorts.
-  Their absolute quantities may change with the fitted stock. This deliberately
-  conditions on the existing exit schedule; it does not jointly estimate retirement
-  timing or silently add retirements to fit reported construction.
+- The fitted stock matches the values in the input file for every reported year.
+  Stock between those years comes from the starting assets that survive and the
+  new assets added each year.
+- An annual addition rate reported for a particular year applies to that year.
+  Values filled in between reported years only guide the fit. The REMIND pilot
+  uses this interpretation for `New Cap` and `Sales`.
+- A reported average applies to its stated period. An average of 10 GW per year
+  over five years means 50 GW in total. Each period uses its actual start and end year.
+- Each asset keeps the lifetime assigned in its build year. The starting amounts
+  represent assets already in use at the beginning of the run.
+- `exit_policy: error` allows retirement from ageing alone. With `proportional`,
+  the tool first uses a straight-line stock estimate to work out the share of
+  surviving assets that retires early each year. The fit keeps those shares
+  fixed, so the quantities retired may change as the estimated stock changes.
 
 The resulting stock is linear in annual additions:
 
@@ -33,29 +29,25 @@ The resulting stock is linear in annual additions:
 K[t] = surviving_initial_stock[t] + sum_c(response[t,c] * additions[c])
 ```
 
-`response` includes natural survival and any fixed proportional extra-exit
-fractions. All additions and cohort stocks are nonnegative. Native source rows
-and values remain unchanged. Newly introduced annual columns in original IAM
-rows still follow the general linear interpolation convention; reconstructed
-annual stocks and additions are explicitly in `Stock Vintage|v1|`. Consumers
-requiring these reconstructed quantities must use that namespace. Different
-sensitivity cases can have different intermediate annual stocks.
+`response[t,c]` is the share of additions made in year `c` that survive until
+year `t`, including any fixed share retired early. Additions and stocks must
+be nonnegative. The older CSV format fills gaps in the original rows along a
+straight line and writes the fitted values in the `Stock Vintage|v1|` rows.
+Changing assumptions can change estimated stock between reporting years.
 
 ## Smoothing and incompatible observations
 
-SciPy HiGHS first checks whether stock anchors and all source inflow constraints
-are simultaneously feasible under the selected initialization, lifetime and exit
-assumptions. If they are, all remain exact while the annual path is smoothed.
-This feasibility statement is conditional on those assumptions, not a finding
-that REMIND itself is internally inconsistent.
+The HiGHS solver in SciPy checks whether the stock and addition figures can both
+be matched given the starting ages, lifetimes, and retirement assumptions. When
+they can, the fit keeps both sets of reported figures exactly and estimates a
+smooth series between them. This check applies to the assumptions used in the run.
 
-If the constraints conflict, `strict` raises an error. An explicitly selected
-`penalized` policy retains exact stock anchors and balances additions' curvature
-against discrepancies in source inflow rates. Every sampled-year or period-mean
-discrepancy is reported, including period totals. No period is silently shortened
-or relabelled, and zero source rates are not hidden behind relative percentages.
+If the figures cannot both be matched, `strict` stops the run. `penalized`
+keeps reported stock values and balances a smooth series of annual additions
+against differences from the reported addition rates. The report shows each
+difference, including totals for reported periods and differences from zero rates.
 
-With all quantities divided by one common stock scale, the quadratic objective is:
+The solver puts all quantities on the same scale, then minimises this sum.
 
 ```text
 sum(second_difference(annual_additions)^2)
@@ -63,31 +55,25 @@ sum(second_difference(annual_additions)^2)
   + inflow_weight * sum((reconstructed_reported_rates - source_rates)^2)
 ```
 
-The final term is used only when inflow constraints are infeasible and `penalized`
-is selected. Exact-feasible fits keep those constraints hard. Each reported rate
-has one residual; a period mean uses the average of all entries in its actual
-window. The objective does not give a ten-year window twice a five-year window's
-weight simply because it contains more years.
+The final term applies when the data conflict and `penalized` is selected. Each
+reported rate counts once, whether it gives one year or an average across
+several years. A reported average is compared with the average of all estimated
+values for that period.
 
-The example sets `reference_weight: 0.01`, `inflow_weight: 10` and compares inflow
-weights 1 and 100. These are documented regularization choices, not calibrated
-statistical uncertainties. A separate minimum absolute rate discrepancy is
-reported to distinguish unavoidable mismatch from the extra mismatch accepted
-for smoothness. Minimizing only that absolute discrepancy can concentrate new
-capacity into narrow spikes; it is a diagnostic, not the selected smooth fit.
+The example sets `reference_weight: 0.01` and `inflow_weight: 10`. It also tests
+addition weights of 1 and 100. These choices control the trade-off in the fit.
+The report gives the smallest possible difference from the addition rates as
+well, so readers can see how much extra difference the smooth fit accepts.
+Fitting only that difference can produce short spikes in additions.
 
-Pinned OSQP solves the convex quadratic fit. SciPy HiGHS independently checks
-linear feasibility first. Equality rows are numerically rescaled when source
-anchors span several orders of magnitude; the original equations and final
-residual checks are unchanged. For a penalized fit only, SciPy SLSQP is a
-recorded fallback when OSQP does not meet its certificate. The fallback must
-pass the same nonnegativity and equality checks plus an independently computed
-active-set KKT check. Exact source-inflow constraints never use that fallback.
-Solver, status, scaling, residuals and iterations are recorded in the report.
-The code aborts if either certificate fails; a visually smooth plot does not
-count as validation. Curvature need not improve relative to the old stock-only
-baseline when newly enforcing observed sales samples introduces additional
-constraints.
+The code uses a fixed OSQP version to solve the fit. It rescales equations when
+reported figures differ greatly in size and checks the results against the
+original equations. For `penalized` only, SciPy SLSQP can take over if OSQP fails
+its checks. That alternative must pass the same checks on values and equations,
+plus a check that the result satisfies the mathematical conditions for a best
+fit (the KKT conditions). The run stops if the required checks fail. The report
+records the solver, outcome, scaling, remaining differences, and iteration count.
+Matching observed sales can make the result less smooth than the stock-only fit.
 
 ## Configuration
 
@@ -101,37 +87,33 @@ annualisation:
   reference_weight: 0.01
   inflow_weight: 10
   provenance: >-
-    Exact stock anchors; smooth annual additions with explicit inflow reconciliation.
-    Fixed proportional exit fractions from the linear-stock baseline.
+    Match stock in reported years and estimate smooth annual additions.
+    Use fixed retirement shares from the straight-line stock estimate.
 ```
 
-All fields are required; unknown fields, nonpositive weights and booleans fail
-validation. The `annualisation` block is rejected outside joint mode. Legacy
-`stock` and `inflow` configurations continue to work unchanged.
+Supply all fields and use positive numbers for both weights. Use the
+`annualisation` section only with `mode: joint`.
 
-## Horizon and interval boundaries
+## Which years are used
 
-The internal solve includes the next stock anchor at/after the requested end
-year and completes any intersecting addition-reporting windows. REMIND `New Cap`
-and `Sales` are instead annual samples, so the reviewed pilot linearly interpolates
-their reference trajectory without inventing reporting windows. Full internal
-inflows are retained in the report for verification.
+The fit runs to the next reported stock year on or after the requested end year.
+It also completes each addition period that overlaps the requested range. The
+report includes the annual additions for every year used in the fit. In the
+REMIND pilot, `New Cap` and `Sales` are treated as annual rates at the stated years.
 
-A reporting window crossing the initial stock date is rejected because its
-historical additions are not supplied. Choose an earlier initial state or an
-aligned reference year instead of assuming its missing part. Overlapping,
-duplicate, uncovered and extrapolating windows are rejected. The generic tests
-cover five-to-ten-year and irregular windows. The actual REMIND pilot still
-stops at 2050; later native reporting mappings require a separate review.
+If an addition period starts before the starting stock date, choose an earlier
+starting stock date or start at a reporting boundary. Reporting periods must
+cover the requested years without overlaps or gaps, and stay within the input
+range. The tests include five-year, ten-year, and uneven periods. The REMIND
+pilot covers years through 2050.
 
-## Diagnostics, reproduction and runtime
+## Checking and repeating the example
 
-Each asset report includes exact-feasibility status, source stock constraints,
-source inflow samples/windows and residuals, internal solve years/inflows,
-fixed extra-exit fractions, objective weights, optimizer/KKT checks and original
-versus fitted additions' curvature. `Stock Residual` in joint mode is the deviation
-from the old linear interpolation; actual source-anchor errors are separately
-labelled in `annualisation.stock_anchor_max_absolute_residual`.
+For each asset, the report shows whether both input series could be matched,
+the values and periods used, differences from reported values, the shares
+retired early, the fit weights, and the solver checks. `Stock Residual` compares
+the fit with the straight-line estimate. The difference from the reported stock
+is recorded separately in `annualisation.stock_anchor_max_absolute_residual`.
 
 ```console
 python examples/run_remind_stock_pilot.py --archive /path/to/archive \
@@ -140,19 +122,16 @@ python examples/validate_stock_output.py /path/to/new-output/*_report.json
 python examples/plot_joint_annualisation.py /path/to/new-output/*_report.json
 ```
 
-The pilot prepares 44 primary/sensitivity cases. Its preflight records optional
-service-bound failures in `rejected-sensitivities.json` and excludes those invalid
-profiles. Primary-case failures, solver failures and other data errors abort.
-For the reviewed scenario the CCGT age-decay sensitivity fails the 8760-hour
-per-capacity service limit in 2047, leaving 43 valid cases. The declared utilization
-assumption is not clipped to conceal the failure.
+The pilot runs 44 main or alternative cases. It stops on errors in the main
+cases. It records alternative cases with impossible levels of use in
+`rejected-sensitivities.json` and leaves them out of the results. In 2047, one
+gas power case exceeds 8760 hours of full-load operation, leaving 43 valid cases.
 
-`annualisation-comparison.pdf` contains actual annual stock/addition paths and
-recomputed vintage distributions, with no cosmetic smoothing. Period observations
-are drawn according to their declared sample/window semantics. Runtime variables,
-units, common-amortisation inventory coefficients and premise/TRAILS interfaces
-are unchanged. Producer hashes and the paired consumer checks remain required.
+`annualisation-comparison.pdf` shows the calculated annual stock, additions,
+and build-year shares. It draws each observation as a value for one year or an
+average over its reported period. Inputs and outputs for `premise` and TRAILS
+are checked using the existing test runs.
 
-Remaining modelling uncertainties include proxy initialization, lifetime and
-utilization priors, historical cohort dates, the inherited early-exit schedule,
-within-year service exposure and the weighting of incompatible inflow data.
+Uncertainty remains about starting ages, lifetimes, how much assets are used,
+early retirement, what happens within a year, and how much weight to give
+addition data when the reported figures disagree.

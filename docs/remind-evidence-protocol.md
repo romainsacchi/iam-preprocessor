@@ -25,11 +25,11 @@ The original REMIND source is
 | `f923_2022.zip` | `2f030b7da3802b9310ecd93ef98014890d3519e6d1db55e5a49173121e5e82e4` | Existing archive, `public-sources/` |
 | `veh1111.ods` | `bc3529975f7fa9e12181b64397cb1e619ae78926130146b64f5c35b9e268d1cc` | Existing archive, `public-sources/` |
 
-Archive a new snapshot with its own manifest before implementation relies on
+Archive a new snapshot with its own file list before implementation relies on
 files in `/private/tmp`. Verify copies against these pins. Referencing an older
 immutable snapshot by hash is acceptable; overwriting it is not. Pin any newly
 acquired mileage or generation source independently, including its release,
-retrieval date, units and any revisions. The source manifest must not contain
+retrieval date, units and any revisions. The source file list must not contain
 cryptographic keys or credentials.
 
 Observed layouts:
@@ -48,7 +48,7 @@ Observed layouts:
   year and manufacture year are distinct concepts. ODS numeric values are counts
   expressed in thousands; preserve low counts and unknown first-use dates.
 
-## 2. Canonical observation and audit records
+## 2. Standard observation and checking records
 
 Retain generator records before aggregating to cohorts. The minimum fields are:
 
@@ -67,14 +67,14 @@ cohort, with known counts, unknown counts and independently published totals.
 They have no fabricated vehicle-level IDs. Keep petrol, diesel and BEV rows
 separate before constructing the disjoint combined Liquids proxy.
 
-A transition ledger references both source records and distinguishes confirmed
+A record of changes references both source records and distinguishes confirmed
 retirement, commissioning, status transition, capacity change, date revision,
 category change, newly covered record and unexplained disappearance. The sum of
 its disjoint changes must reconcile observed opening and closing capacity. Do
 not reinterpret an uprate or revised date as a wholly new asset by default.
 
 The IAM comparison table records native/interpolated status, source anchor years,
-stock selector/unit and the precise observational selection. Record a missing
+stock variable and unit and the precise observational selection. Record a missing
 value as missing, not zero; zero denominators do not produce infinite ratios.
 Record UK-to-EUR scale factors separately from like-for-like US errors.
 
@@ -105,7 +105,7 @@ Freeze the current lifetime and additional-exit assumptions for the principal
 runs. Tests of alternative priors are predeclared sensitivities. Estimating new
 retirement laws from the same short holdout is outside this work package.
 
-### Time split and leakage controls
+### Use separate years for fitting and checking
 
 - Power: 2020 initialization; 2021 for development diagnostics; 2022 withheld from
   new tuning after the protocol is frozen. The 2022 snapshot was already used in
@@ -140,7 +140,7 @@ Use common cohort support with explicit zeros only for confirmed absent cohorts.
 Unknown or uncovered mass has its own category and coverage metric. Age-only
 metrics use explicitly identified dated/comparable support and publish its mass
 coverage. Unknown ages cannot be assigned an arbitrary age for W1 or quantiles;
-unexplained disappearing mass remains visible in the full-population ledger.
+unexplained disappearing mass remains visible in the record for the full population.
 
 Report for each asset, year and experiment:
 
@@ -189,12 +189,12 @@ record every alias. Preserve valid reported zero generation. Preserve raw negati
 net generation in a separate diagnostic because it cannot form a nonnegative
 production-service weight. Missing, zero and negative values are distinct states.
 
-### Temporal and capacity consistency
+### Check dates and capacities
 
 Generation is annual whereas the producer's default service composition describes
 end-year serving stock. A unit retired during the year can generate electricity
-without appearing in that closing stock. Keep this difference in the denominator
-and reconciliation ledger; do not assign its output to surviving generators.
+without appearing in that closing stock. Account for that generation separately
+from the use of plants still operating at the end of the year.
 
 For commissioning-year units, use monthly generation and credible operating
 months to assess exposure where possible. Full-year comparable units provide
@@ -264,7 +264,7 @@ assessment of vehicles absent from the test population. Availability of licensin
 counts alone does not supply any of these utilization quantities.
 
 Priority is an official usable age/body/fuel mileage table. For passenger-km,
-make occupancy assumptions explicit; for tonne-km, make payload and empty-running
+make occupancy assumptions explicit; for tonne-km, make weight carried and trips without cargo
 assumptions explicit. Do not reuse car mileage as a heavy-truck service profile.
 Do not describe a vignette based on vehicle-km as observed passenger- or tonne-km.
 
@@ -278,9 +278,9 @@ If an actual non-exponential age schedule qualifies, specify annual-age lookup,
 interpolation, youngest/oldest-age rules, new-entrant exposure and missing-age
 policy before adding an opt-in configuration kind. Test movement along the age
 curve as cohorts age. Keep existing configuration behavior and consumer output
-contracts compatible.
+file formats compatible.
 
-## 7. Reproducibility, invariants and package outputs
+## 7. Files to save and results to check
 
 Each candidate export records the evidence snapshot, protocol version, mapping
 version, implementation hashes, chosen service method, coverage, imputation and
@@ -290,18 +290,19 @@ experiment. Preserve failed cases and old defaults as explicit comparisons.
 Accounting checks include nonnegative finite stocks/shares, normalized shares
 for positive-service cases, chronological validity, stock balance, unchanged
 native IAM values, explicit source-inflow residuals, exact eligible generation
-reconciliation and conserved inventory coefficients. Use scaled floating-point
+reconciliation and conserved inventory amounts per unit of output. Use scaled floating-point
 tolerances consistent with existing tests; integer vehicle counts reconcile
 exactly before modelling allocations.
 
-Keep the current `Stock Vintage|v1|` contract. Run existing tests plus focused
-new parser, matching, historical-evaluation and service-weight tests. For affected
-exports repeat independent serialized checks, filtered/encrypted/cached profile
-comparisons and signed-demand premise-to-TRAILS integration. Integration fixtures
-remain synthetic inventories and cannot validate real production coefficients.
+Keep the existing `Stock Vintage|v1|` output format. Run existing tests and add
+checks for how the files are read, records are matched, historical ages are
+estimated, and use is split by age. Check saved results independently and
+compare filtered, encrypted, and cached results. Test `premise` and TRAILS
+together with positive and negative demand. These runs use made-up inventories
+to check the software.
 
 The new campaign writes a separate output directory with a Markdown assessment,
-PDF and PNG figures, numeric plot tables, transitions and coverage ledgers, rejected
+PDF and PNG figures, numeric plot tables, transitions and records of available data, rejected
 cases, validation JSON and artifact hashes. Preserve the earlier sector-expansion
 artifacts. No source data, test encryption keys or private scenarios are committed.
 

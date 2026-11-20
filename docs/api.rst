@@ -4,28 +4,40 @@ Python API
 Configuration and reports
 -------------------------
 
-.. automodule:: iam_preprocessor.config
-   :members:
-
 .. automodule:: iam_preprocessor.report
    :members:
 
-Model workflows
----------------
+Scenario preparation
+--------------------
 
-.. automodule:: iam_preprocessor.image
+.. automodule:: iam_preprocessor.prepare
    :members:
 
-.. automodule:: iam_preprocessor.message
+Optional model adapters
+-----------------------
+
+.. automodule:: iam_preprocessor.adapters.image.preparation
    :members:
 
-.. automodule:: iam_preprocessor.remind
+.. automodule:: iam_preprocessor.adapters.image.config
+   :members:
+
+.. automodule:: iam_preprocessor.adapters.image.transport
+   :members:
+
+.. automodule:: iam_preprocessor.adapters.message.preparation
+   :members:
+
+.. automodule:: iam_preprocessor.adapters.remind.preparation
    :members:
 
 Stock-vintage enrichment
 ------------------------
 
 The modules below follow the order in which data moves through the workflow.
+
+.. automodule:: iam_preprocessor.stock_workflow
+   :members:
 
 .. automodule:: iam_preprocessor.vintage_inputs
    :members:
@@ -51,14 +63,8 @@ The modules below follow the order in which data moves through the workflow.
 .. automodule:: iam_preprocessor.stock_package
    :members:
 
-.. automodule:: iam_preprocessor.remind_stock_inventory
-   :members:
-
-Transport, filtering, and cryptography
----------------------------------------
-
-.. automodule:: iam_preprocessor.transport
-   :members:
+Filtering and cryptography
+--------------------------
 
 .. automodule:: iam_preprocessor.filtering
    :members:
